@@ -1,0 +1,7 @@
+[x] Show disassembly before each cpu step
+[x] Create win32 window
+[ ] Replace List_Item with Label
+[ ] Create id map
+[ ] Change active_control with Tab and Alt+Tab
+[ ] allow control creation with id
+[ ] 

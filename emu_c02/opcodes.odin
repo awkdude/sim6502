@@ -1,0 +1,282 @@
+package emu_c02
+
+Opcode :: struct {
+    instruction: Instruction,
+    address_mode: Address_Mode,
+    clock_cycles: uint,
+}
+
+opcode_table_c02 := [256]Opcode {
+    // 0x00
+    {.brk, .imp, 7},
+    {.ora, .idx, 6},
+    {.nop, .imm, 2},
+    {.nop, .imp, 1},
+    {.tsb, .dpg, 5},
+    {.ora, .dpg, 3},
+    {.asl, .dpg, 5},
+    {.ora, .idl, 6}, // RMB0
+    {.php, .imp, 3},
+    {.ora, .imm, 2},
+    {.asl_a, .acc, 2},
+    {.nop, .imp, 1},
+    {.tsb, .abs, 6},
+    {.ora, .abs, 4},
+    {.asl, .abs, 6},
+    {.ora, .abl, 5}, // BBR0
+    // 0x10
+    {.bpl, .rel, 2},
+    {.ora, .idy, 5},
+    {.ora, .idp, 5},
+    {.nop, .imp, 1},
+    {.trb, .dpg, 5},
+    {.ora, .dpx, 4},
+    {.asl, .dpx, 6},
+    {.ora, .idly, 6}, // RMB1
+    {.clc, .imp, 2},
+    {.ora, .aby, 4},
+    {.inc_a, .acc, 2},
+    {.nop, .imp, 1},
+    {.trb, .abs, 6},
+    {.ora, .abx, 4},
+    {.asl, .abx, 7},
+    {.ora, .alx, 4}, // BBR1
+    // 0x20
+    {.jsr, .abs, 6},
+    {.and, .idx, 6},
+    {.nop, .imp, 2},
+    {.nop, .imm, 1},
+    {.bit, .dpg, 3},
+    {.and, .dpg, 3},
+    {.rol, .dpg, 5},
+    {.and, .idl, 6}, // RMB2
+    {.plp, .imp, 4},
+    {.and, .imm, 2},
+    {.rol_a, .acc, 2},
+    {.nop, .imp, 1},
+    {.bit, .abs, 4},
+    {.and, .abs, 4},
+    {.rol, .abs, 6},
+    {.and, .abl, 5}, // BBR2
+    // 0x30
+    {.bmi, .rel, 2},
+    {.and, .idx, 6},
+    {.and, .idp, 5},
+    {.nop, .imp, 1},
+    {.bit, .dpx, 4},
+    {.and, .dpx, 4},
+    {.rol, .dpx, 6},
+    {.and, .idly, 6}, // RMB3
+    {.sec, .imp, 2},
+    {.and, .aby, 4},
+    {.dec_a, .acc, 2},
+    {.nop, .imp, 1},
+    {.bit, .abx, 4},
+    {.and, .abx, 4},
+    {.rol, .abx, 7},
+    {.and, .alx, 5}, // BBR3
+    // 0x40
+    {.rti, .imp, 6},
+    {.eor, .idx, 6},
+    {.nop, .imm, 2},
+    {.nop, .imp, 1},
+    {.nop, .dpg, 3},
+    {.eor, .dpg, 3},
+    {.lsr, .dpg, 5},
+    {.eor, .idl, 6}, // RMB4
+    {.pha, .imp, 3},
+    {.eor, .imm, 2},
+    {.lsr_a, .acc, 2},
+    {.nop, .imp, 1},
+    {.jmp, .abs, 3},
+    {.eor, .abs, 4},
+    {.lsr, .abs, 6},
+    {.eor, .abl, 5}, // BBR4
+    // 0x50
+    {.bvc, .rel, 2},
+    {.eor, .idy, 5},
+    {.eor, .idp, 5},
+    {.nop, .imp, 1},
+    {.nop, .dpg, 4},
+    {.eor, .dpx, 4},
+    {.lsr, .dpx, 6},
+    {.eor, .idly, 6}, // RMB5
+    {.cli, .imp, 2},
+    {.eor, .aby, 4},
+    {.phy, .imp, 3},
+    {.nop, .imp, 1},
+    {.nop, .abs, 8},
+    {.eor, .abx, 4},
+    {.lsr, .abx, 6},
+    {.eor, .alx, 5}, // BBR5
+    // 0x60
+    {.rts, .imp, 6},
+    {.adc, .idx, 6},
+    {.nop, .imm, 2},
+    {.nop, .imp, 1},
+    {.stz, .dpg, 3},
+    {.adc, .dpg, 3},
+    {.ror, .dpg, 5},
+    {.adc, .idl, 6}, // RMB6
+    {.pla, .imp, 4},
+    {.adc, .imm, 2},
+    {.ror_a, .acc, 2},
+    {.nop, .imp, 1},
+    {.jmp, .ind, 5},
+    {.adc, .abs, 4},
+    {.ror, .abs, 6},
+    {.adc, .abl, 5}, // BBR6
+    // 0x70
+    {.bvs, .rel, 2},
+    {.adc, .idy, 5},
+    {.adc, .idp, 5},
+    {.nop, .imp, 1},
+    {.stz, .dpx, 4},
+    {.adc, .dpx, 4},
+    {.ror, .dpx, 6},
+    {.adc, .idly, 6}, // RMB7
+    {.sei, .imp, 2},
+    {.adc, .aby, 4},
+    {.ply, .imp, 4},
+    {.nop, .imp, 1},
+    {.jmp, .ial, 6},
+    {.adc, .abx, 4},
+    {.ror, .abx, 7},
+    {.adc, .alx, 5}, // BBR7
+    // 0x80
+    {.bra, .rel, 3},
+    {.sta, .idx, 6},
+    {.nop, .imm, 2},
+    {.nop, .imp, 1},
+    {.sty, .dpg, 3},
+    {.sta, .dpg, 3},
+    {.stx, .dpg, 3},
+    {.sta, .idl, 6}, // SMB0
+    {.dey, .imp, 3},
+    {.bit, .imm, 2},
+    {.txa, .imp, 2},
+    {.nop, .imp, 1},
+    {.sty, .abs, 4},
+    {.sta, .abs, 4},
+    {.stx, .abs, 4},
+    {.sta, .abl, 5}, // BBS0
+    // 0x90
+    {.bcc, .rel, 2},
+    {.sta, .idy, 6},
+    {.sta, .idp, 5},
+    {.nop, .imp, 1},
+    {.sty, .dpx, 4},
+    {.sta, .dpx, 4},
+    {.stx, .dpy, 4},
+    {.sta, .idly, 6}, // SMB1
+    {.tya, .imp, 2},
+    {.sta, .aby, 5},
+    {.txs, .imp, 2},
+    {.nop, .imp, 1}, 
+    {.stz, .abs, 4},
+    {.sta, .abx, 5},
+    {.stz, .abx, 5},
+    {.sta, .alx, 5}, // BBS1
+    // 0xa0
+    {.ldy, .imm, 2},
+    {.lda, .idx, 6},
+    {.ldx, .imm, 2},
+    {.nop, .imp, 1},
+    {.ldy, .dpg, 3},
+    {.lda, .dpg, 3},
+    {.ldx, .dpg, 3},
+    {.lda, .idl, 6}, // SMB2
+    {.tay, .imp, 2},
+    {.lda, .imm, 2},
+    {.tax, .imp, 2},
+    {.nop, .imp, 1},
+    {.ldy, .abs, 4},
+    {.lda, .abs, 4},
+    {.ldx, .abs, 4},
+    {.lda, .abl, 5}, // BBS2
+    // 0xb0
+    {.bcs, .rel, 2},
+    {.lda, .idy, 5},
+    {.lda, .idp, 5},
+    {.nop, .imp, 1},
+    {.ldy, .dpx, 4},
+    {.lda, .dpx, 4},
+    {.ldx, .dpy, 4},
+    {.lda, .idly, 6}, // SMB3
+    {.clv, .imp, 2},
+    {.lda, .aby, 4},
+    {.tsx, .imp, 2},
+    {.nop, .imp, 1},
+    {.ldy, .abx, 4},
+    {.lda, .abx, 4},
+    {.ldx, .aby, 4},
+    {.lda, .alx, 5}, // BBS3
+    // 0xc0
+    {.cpy, .imm, 2},
+    {.cmp, .idx, 6},
+    {.nop, .imm, 2},
+    {.nop, .imp, 1},
+    {.cpy, .dpg, 3},
+    {.cmp, .dpg, 3},
+    {.dec, .dpg, 5},
+    {.cmp, .idl, 6}, // SMB4
+    {.iny, .imp, 2},
+    {.cmp, .imm, 2},
+    {.dex, .imp, 2},
+    {.wai, .imp, 3},
+    {.cpy, .abs, 4},
+    {.cmp, .abs, 4},
+    {.dec, .abs, 6},
+    {.cmp, .abl, 5}, // BBS4
+    // 0xd0
+    {.bne, .rel, 2},
+    {.cmp, .idy, 5},
+    {.cmp, .idp, 5},
+    {.nop, .imp, 1},
+    {.nop, .dpx, 4},
+    {.cmp, .dpx, 4},
+    {.dec, .dpx, 6},
+    {.cmp, .idly, 6}, // SMB5
+    {.cld, .imp, 2},
+    {.cmp, .aby, 4},
+    {.phx, .imp, 3},
+    {.stp, .imp, 3},
+    {.nop, .abs, 4},
+    {.cmp, .abx, 4},
+    {.dec, .abx, 7},
+    {.cmp, .alx, 5}, // BBS5
+    // 0xe0
+    {.cpx, .imm, 2},
+    {.sbc, .idx, 6},
+    {.nop, .imm, 2},
+    {.nop, .imp, 1},
+    {.cpx, .dpg, 3},
+    {.sbc, .dpg, 3},
+    {.inc, .dpg, 5},
+    {.sbc, .idl, 6}, // SMB6
+    {.inx, .imp, 2},
+    {.sbc, .imm, 2},
+    {.nop, .imp, 2},
+    {.nop, .imp, 1},
+    {.cpx, .abs, 4},
+    {.sbc, .abs, 4},
+    {.inc, .abs, 6},
+    {.sbc, .abl, 5}, // BBS6
+    // 0xf0
+    {.beq, .rel, 2},
+    {.sbc, .idy, 5},
+    {.sbc, .idp, 5},
+    {.nop, .imp, 1},
+    {.nop, .dpx, 4},
+    {.sbc, .dpx, 4},
+    {.inc, .dpx, 6},
+    {.sbc, .idly, 6}, // SMB7
+    {.sed, .imp, 2},
+    {.sbc, .aby, 4},
+    {.plx, .imp, 4},
+    {.nop, .imp, 1},
+    {.nop, .abs, 4},
+    {.sbc, .abx, 4},
+    {.inc, .abx, 7},
+    {.sbc, .alx, 5}, // BBS7
+}

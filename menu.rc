@@ -1,0 +1,5 @@
+TryMenu MENU {
+    MENUITEM "Quit", 100
+    MENUITEM "Direct2D", 101
+    MENUITEM "Software", 102
+}

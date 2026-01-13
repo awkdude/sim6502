@@ -1,0 +1,9 @@
+MEMORY {
+    ROM: start = $0000, size = $10000, file = %O, fill = yes;
+}
+
+SEGMENTS {
+    RODATA:       load = ROM, start=$2000, TYPE = ro;
+    CODE:         load = ROM, start=$8000, TYPE = ro;
+    VECTORS:      load = ROM, start=$fffa, TYPE = ro;
+}
