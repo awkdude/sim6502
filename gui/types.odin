@@ -1,6 +1,6 @@
 package gui
 
-import "../util"
+import "odinlib:util"
 
 Control_Type :: enum {
     Container,

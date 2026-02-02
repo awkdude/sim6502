@@ -1,13 +1,10 @@
 package gui
 
-import "../d2d"
-import "../util"
-import "core:unicode/utf8"
+import "odinlib:util"
 import "core:slice"
 import "core:time"
 import "core:math"
 import "core:math/ease"
-import win "core:sys/windows"
 import "../draw"
 
 Button :: struct {
@@ -25,8 +22,7 @@ button :: proc(text: string, font: rawptr, scale: util.vec2f = {2.6, 1}) -> Cont
     return cons
 }
 
-button_render :: proc(ctx: ^Context, control: ^Control) {
-    using ctx
+button_render :: proc(using ctx: ^Context, control: ^Control) {
     fill_color := draw.color_red
     if ctx.active_control == control {
         fill_color = draw.color_white

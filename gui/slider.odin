@@ -1,6 +1,6 @@
 package gui
 
-import "../util"
+import "odinlib:util"
 import "../draw"
 import "core:log"
 import "core:math"

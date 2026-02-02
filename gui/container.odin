@@ -1,7 +1,7 @@
 package gui
 
 import "../draw"
-import "../util"
+import "odinlib:util"
 
 
 Container :: struct {}
@@ -10,7 +10,7 @@ container_render :: proc(ctx: ^Context, control: ^Control) {
     using ctx
     if true {
         draw_context->push_command(draw.Stroke_Rect {
-            rect=control.rect,
+            rect=util.rect_to_f(control.rect),
             color=draw.color_black,
             line_width=3,
         })
@@ -20,7 +20,9 @@ container_render :: proc(ctx: ^Context, control: ^Control) {
         draw_context->push_command(draw.Draw_Text {
             text=name,
             font=small_font,
-            rect={control.rect.x, control.rect.y, text_size.x, text_size.y},
+            rect=util.rect_to_f(
+                {control.rect.x, control.rect.y, text_size.x, text_size.y}
+            ),
             color=draw.color_black,
         })
         // Left

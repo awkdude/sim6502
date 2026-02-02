@@ -3,15 +3,29 @@ package gui
 import "base:runtime"
 import "core:log"
 import "core:container/queue"
-import "../util"
+import "odinlib:util"
 import "../draw"
 import "core:time"
 import "core:math"
 import "core:math/ease"
 
 vec2 :: util.vec2
+vec2f :: util.vec2f
 Rect :: util.Rect
-assertf :: log.assertf
+Rectf :: util.Rectf
+
+rect_to_f :: proc(r: Rect) -> Rectf {
+    return {
+        x=cast(f32)r.x,
+        y=cast(f32)r.y,
+        w=cast(f32)r.w,
+        h=cast(f32)r.h,
+    }
+}
+
+vec2_to_f :: proc(v: vec2) -> vec2f { 
+    return { cast(f32)v.x, cast(f32)v.y }
+}
 
 // NOTE: Should this be aligned?
 ID_Type :: [16]u8
@@ -43,7 +57,9 @@ Context :: struct {
     ease_type: int,
 }
 
-context_init :: proc(ctx: ^Context, allocator := context.allocator) { // {{{
+context_init :: proc(ctx: ^Context, allocator := context.allocator) {
+// {{{
+    ctx^ = {}
     ctx.control_allocator = allocator
     assert(ctx.draw_context != nil, "No draw context set")
     assert(ctx.draw_context.data != nil, "No backend data pointer set")
@@ -71,8 +87,9 @@ context_init :: proc(ctx: ^Context, allocator := context.allocator) { // {{{
         ctx.control_allocator
     )
     queue.init(&ctx.events)
-}
 // }}}
+}
+
 
 change_ease :: proc(ctx: ^Context, dec: bool = false) {
     ctx.ease_type = util.wrap(
@@ -83,7 +100,8 @@ change_ease :: proc(ctx: ^Context, dec: bool = false) {
     log.debugf("Changed ease to %v", cast(ease.Ease)ctx.ease_type)
 }
 
-context_handle_event :: proc(ctx: ^Context, window_event: util.Window_Event) { // {{{
+context_handle_event :: proc(ctx: ^Context, window_event: util.Window_Event) {
+// {{{
     update_layout(ctx)
     #partial switch window_event.type {
     case .Key:
@@ -108,9 +126,9 @@ context_handle_event :: proc(ctx: ^Context, window_event: util.Window_Event) { /
                     scrollable_control, found := find_scrollable_parent(ctx.hovered_control)
                     if found do scroll_control(ctx, scrollable_control, .Bottom)
                 }
-            case util.KEY_PAGE_UP:
+            case util.KEY_PAGEUP:
                 change_ease(ctx)
-            case util.KEY_PAGE_DOWN:
+            case util.KEY_PAGEDOWN:
                 change_ease(ctx, true)
             }
 
@@ -225,10 +243,11 @@ context_handle_event :: proc(ctx: ^Context, window_event: util.Window_Event) { /
         event_proc := handle_event_proc_table[ctx.hovered_control.type]
         event_proc(ctx, ctx.hovered_control, window_event)
     }
-} /// }}}
+// }}}
+} 
 
-context_render :: proc(ctx: ^Context) { // {{{
-    using ctx
+context_render :: proc(using ctx: ^Context) {
+// {{{
     update_layout(ctx)
     draw_context->push_command(draw.Clear{color=draw.color_white})
     stack := make([dynamic]^Control, context.temp_allocator)
@@ -256,9 +275,11 @@ context_render :: proc(ctx: ^Context) { // {{{
             draw_context->push_clip_rect(clip_rect)
         }
     }
-} // }}}
+// }}}
+}
 
-set_hover :: proc(ctx: ^Context, control: ^Control) { // {{{
+set_hover :: proc(ctx: ^Context, control: ^Control) { 
+// {{{
     // FIXME:
     old_hovered := ctx.hovered_control
     ctx.hovered_control = control
@@ -275,9 +296,11 @@ set_hover :: proc(ctx: ^Context, control: ^Control) { // {{{
             log.debugf("Unhovered")
         }
     }
-} // }}}
+// }}}
+} 
 
-set_active :: proc(ctx: ^Context, control: ^Control) { // {{{
+set_active :: proc(ctx: ^Context, control: ^Control) { 
+// {{{
     // FIXME:
     old_active := ctx.active_control
     ctx.active_control = control
@@ -288,7 +311,8 @@ set_active :: proc(ctx: ^Context, control: ^Control) { // {{{
             log.debugf("No active")
         }
     }
-} // }}}
+ // }}}
+}
 
 is_hover :: proc(ctx: ^Context, control: ^Control) -> bool {
     return ctx.hovered_control == control
@@ -316,7 +340,8 @@ Traverse :: enum {
     Right,
 }
 
-move_key_hover :: proc(ctx: ^Context, traverse: Traverse) { /// {{{
+move_key_hover :: proc(ctx: ^Context, traverse: Traverse) { 
+// {{{
     if !ctx.hovered_by_keyboard {
         ctx.active_control = ctx.root_control
         ctx.hovered_by_keyboard = true
@@ -333,7 +358,8 @@ move_key_hover :: proc(ctx: ^Context, traverse: Traverse) { /// {{{
             }
         }
     }
-} // }}}
+ // }}}
+}
 
 // {{{ Events
 Event_Type :: enum {

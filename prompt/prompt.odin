@@ -6,7 +6,7 @@ import "base:intrinsics"
 import "core:unicode/utf8"
 import d2d "lib"
 import win "core:sys/windows"
-import "util"
+import "odinlib:util"
 import "core:log"
 
 Command_Line :: struct {
@@ -37,8 +37,8 @@ prompt_init :: proc(command_line: ^Command_Line, d2d_context: ^util.Direct2D_Con
     command_line.d2d_context = d2d_context
 }
 
-// {{{ update prompt
 prompt_update :: proc(command_line: ^Command_Line, event: util.Window_Event) {
+// {{{ 
     // FIXME: window event struct changed
     switch event_data in event {
     case util.Char_Event:
@@ -92,9 +92,11 @@ prompt_update :: proc(command_line: ^Command_Line, event: util.Window_Event) {
         cast(f32)render_target_size.height,
         &command_line.d2d_context.text_layout,
     )
-}//}}}
+//}}}
+}
 
-prompt_render_direct2d :: proc(command_line: ^Command_Line) {// {{{
+prompt_render_direct2d :: proc(command_line: ^Command_Line) {
+// {{{
     assert(command_line != nil)
     assert(command_line.d2d_context != nil)
     assert(command_line.d2d_context.render_target != nil)
@@ -148,7 +150,8 @@ prompt_render_direct2d :: proc(command_line: ^Command_Line) {// {{{
         )
     }
     command_line.d2d_context.render_target->EndDraw(nil, nil)
-}// }}}
+// }}}
+}
 
 
 advance_cursor :: proc(command_line: ^Command_Line, dx: int) {

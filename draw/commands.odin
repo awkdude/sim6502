@@ -1,70 +1,72 @@
 package draw
 
-import "../util"
+import "odinlib:util"
 // import "../draw"
 import "core:math"
 import "core:log"
 
 vec2f :: util.vec2f
 BBoxf :: util.BBoxf
-// Rect :: util.Rect
-// vec2 :: util.vec2
+Rectf :: util.Rectf
+// vec2f :: util.vec2
 // Color_f :: util.Color_f
 
 Clear :: struct { color: Color_f }
 
 Fill_Rect :: struct {
-    rect: Rect,
+    rect: Rectf,
     color: Color_f,
 }
 
 Fill_Rounded_Rect :: struct {
-    rect: Rect,
+    rect: Rectf,
     color: Color_f,
     corner_radius: i32,
 }
 
 Stroke_Rect :: struct {
-    rect: Rect,
+    rect: Rectf,
     color: Color_f,
     line_width: i32,
     style: Stroke_Style,
 }
 
 Fill_Circle :: struct {
-    origin: vec2,
+    origin: vec2f,
     radius: i32,
     color: Color_f,
 }
 
 Stroke_Line :: struct {
-    pts: [2]vec2,
+    pts: [2]vec2f,
     line_width: i32,
     color: Color_f,
     style: Stroke_Style,
 }
 
 Fill_Tri :: struct {
-    v0, v1, v2: vec2,
+    v0, v1, v2: vec2f,
     color: Color_f,
 }
 
 Blit :: struct {
+    // TODO: change to uintptr
     pixmap: ^util.Pixmap,
-    off: vec2,
+    off: vec2f,
 }
 
 Blit_Mono_To_Truecolor :: struct {
+    // TODO: change to uintptr
     pixmap: ^util.Pixmap,
-    off: vec2,
+    off: vec2f,
     color: Color_f,
-    src_rect: Maybe(Rect),
+    src_rect: Maybe(Rectf),
 }
 
 Draw_Text :: struct {
     text: string,
     font: rawptr,
-    rect: Rect,
+    rect: Rectf,
     color: Color_f,
     alignment: enum {
         Leading,
@@ -91,18 +93,18 @@ Stroke_Style :: enum {
     Dash,
 }
 
-map_coord :: proc(v: f32, size, offset: i32) -> i32 {
-    return i32((v * 0.5 + 0.5) * cast(f32)size) + offset
+map_coord :: proc(v: f32, size, offset: f32) -> f32 {
+    return ((v * 0.5 + 0.5) * size) + offset
 }
 
-map_point :: proc(v: vec2f, rect: Rect) -> vec2 {
+map_point :: proc(v: vec2f, rect: Rectf) -> vec2f {
     sv := (v * 0.5 + 0.5) * vec2f{cast(f32)rect.w, cast(f32)rect.h}
-    return {cast(i32)sv.x, cast(i32)sv.y} + {rect.x, rect.y}
+    return {sv.x, sv.y} + {rect.x, rect.y}
 }
 
-fill_rect_nc :: proc(draw_context: ^Draw_Context, rc: BBoxf, color: Color_f, bbox: Rect) {
+fill_rect_nc :: proc(draw_context: ^Draw_Context, rc: BBoxf, color: Color_f, bbox: Rectf) {
     draw_context->push_command(Fill_Rect {
-        rect = util.bbox_to_rect(util.BBox {
+        rect = util.bbox_to_rect(util.BBoxf {
             x0=map_coord(rc.x0, bbox.w, bbox.x),
             y0=map_coord(rc.y0, bbox.h, bbox.y),
             x1=map_coord(rc.x1, bbox.w, bbox.x),
@@ -117,10 +119,10 @@ stroke_rect_nc :: proc(
     rc: BBoxf,
     color: Color_f, 
     line_width: i32,
-    bbox: Rect) 
+    bbox: Rectf) 
 {
     draw_context->push_command(Stroke_Rect {
-        rect = util.bbox_to_rect(util.BBox {
+        rect = util.bbox_to_rect(util.BBoxf {
             x0=map_coord(rc.x0, bbox.w, bbox.x),
             y0=map_coord(rc.y0, bbox.h, bbox.y),
             x1=map_coord(rc.x1, bbox.w, bbox.x),
@@ -131,7 +133,7 @@ stroke_rect_nc :: proc(
     })
 }
 
-stroke_line_nc :: proc(draw_context: ^Draw_Context, p0, p1: vec2f, color: Color_f, bbox: Rect) {
+stroke_line_nc :: proc(draw_context: ^Draw_Context, p0, p1: vec2f, color: Color_f, bbox: Rectf) {
     draw_context->push_command(Stroke_Line {
         pts={
             map_point(p0, bbox),
@@ -141,7 +143,7 @@ stroke_line_nc :: proc(draw_context: ^Draw_Context, p0, p1: vec2f, color: Color_
     })
 }
 
-fill_tri_nc :: proc(draw_context: ^Draw_Context, v0, v1, v2: vec2f, color: Color_f, bbox: Rect) {
+fill_tri_nc :: proc(draw_context: ^Draw_Context, v0, v1, v2: vec2f, color: Color_f, bbox: Rectf) {
     draw_context->push_command(Fill_Tri {
         v0 = map_point(v0, bbox),
         v1 = map_point(v1, bbox),
@@ -155,7 +157,7 @@ fill_circle_nc :: proc(
     origin: vec2f, 
     radius: f32, 
     color: Color_f, 
-    bbox: Rect)
+    bbox: Rectf)
 {
     draw_context->push_command(Fill_Circle {
         origin = map_point(origin, bbox),

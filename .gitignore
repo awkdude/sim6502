@@ -1,0 +1,11 @@
+Makefile
+*.vs
+*.cap
+*.awk
+*.exe
+*.pdb
+*.sln
+*.out
+*.o
+todo.txt
+ols.json

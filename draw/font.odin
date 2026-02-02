@@ -1,5 +1,4 @@
-#+build !windows
-#+build !linux
+#+ignore
 package draw
 import "core:math"
 import "core:strings"

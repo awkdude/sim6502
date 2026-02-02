@@ -1,6 +1,6 @@
 package gui
 
-import "../util"
+import "odinlib:util"
 import "core:log"
 import "core:math"
 import "core:strings"
@@ -47,7 +47,8 @@ Control_Data :: struct #raw_union {
     slider: Slider,
 }
 
-update_layout :: proc(ctx: ^Context, root: ^Control = nil) { // {{{
+update_layout :: proc(ctx: ^Context, root: ^Control = nil) {
+// {{{
     if ctx.layout_updated {
         if root == nil do return
     }
@@ -75,7 +76,7 @@ update_layout :: proc(ctx: ^Context, root: ^Control = nil) { // {{{
             if .Grow_Width in control.flags {
                 control.rect.w = rect.w - rect.x
             }
-            assertf(
+            log.assertf(
                 .Grow_Height not_in control.flags, 
                 "`%s` cannot have a growing height right now!",
                 name(control)
@@ -104,7 +105,8 @@ update_layout :: proc(ctx: ^Context, root: ^Control = nil) { // {{{
         }
     }
     ctx.layout_updated = true
-} // }}}
+ // }}}
+}
 
 Extremity :: enum {
     Top,
@@ -168,10 +170,12 @@ index_children :: proc(ctx: ^Context, control: ^Control, start: int = 0) {
     }
 }
 
-find_scrollable_parent :: proc(_control: ^Control) -> (^Control, bool) {
-    control := _control
+find_scrollable_parent :: proc(control: ^Control) -> (^Control, bool) {
+    control := control
     for control != nil {
-        if .Scrollable in control.flags do return control, true
+        if .Scrollable in control.flags {
+            return control, true
+        }
         control = control.parent
     }
     return nil, false

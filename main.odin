@@ -1,18 +1,18 @@
 package main
 
 import "core:fmt"
-import "core:strings"
 import "core:time"
 import "core:os"
-import "emu_c02"
 import "gui"
 import "draw"
-import "util"
+import "odinlib:util"
 import "core:log"
 import "base:intrinsics"
 
 PRE_INIT_WINDOW_TITLE := "SIM6502"
 PRE_INIT_WINDOW_SIZE := util.vec2{600, 600}
+
+app_context: ^App_Context
 
 App_Context :: struct {
     font: rawptr,
@@ -22,13 +22,18 @@ App_Context :: struct {
     auto_add: bool,
 }
 
-app_init :: proc(app_context: ^App_Context) {
-    using app_context
-    assert(draw_context != nil, "No draw context set")
-    assert(draw_context.vtable != nil, "No draw context vtable set")
-    font = draw_context->create_font("consolas", 30)
-    gui_context.draw_context = draw_context
-    gui_context.handle_platform_command = handle_platform_command 
+App_Init :: struct {
+    draw_context: ^draw.Draw_Context,
+    handle_platform_command: proc(_: util.Platform_Command),
+}
+
+app_init :: proc(I: App_Init) {
+    app_context = new(App_Context)
+    // TODO: validate draw_context
+    app_context.font = I.draw_context->create_font("consolas", 30)
+    app_context.gui_context.draw_context = I.draw_context
+    app_context.gui_context.handle_platform_command = handle_platform_command 
+    gui_context: gui.Context
     gui.context_init(&gui_context)
     // gui.create_control(&gui_context, "first", gui.text_box(&gui_context, "Hello"))
     // gui.create_control(&gui_context, "reg_sp", gui.text_box(&gui_context, "SP", 0xffff))
@@ -53,16 +58,18 @@ app_init :: proc(app_context: ^App_Context) {
     //         gui.list_item(&gui_context, entry.name)
     //     )
     // }
-    text_box := gui.create_control(&gui_context, "txt", gui.text_box(font))
+    text_box := gui.create_control(&gui_context, "txt", gui.text_box(app_context.font))
     slider := gui.create_control(&gui_context, "slid", gui.slider(0, 10, 3))
     // button1 := gui.create_control(&gui_context, "btn1", gui.button("BUTTON 1"))
     // button2 := gui.create_control(&gui_context, "btn2", gui.button("BUTTON 2"))
     // button3 := gui.create_control(&gui_context, "btn3", gui.button("BUTTON 3"))
-    min_size := util.dip_to_px(96*3, draw_context->get_render_target_dpi())
+    min_size := util.dip_to_px(96*3, I.draw_context->get_render_target_dpi())
+    app_context.gui_context = gui_context
+    app_context.draw_context = I.draw_context
     handle_platform_command({type=.Set_Window_Min_Size, size=util.vec2{min_size, min_size}})
 }
 
-app_update :: proc(app_context: ^App_Context) {
+app_update :: proc() {
     using app_context
     free_all(context.temp_allocator)
     interval :: 500 * time.Millisecond
@@ -90,10 +97,10 @@ app_update :: proc(app_context: ^App_Context) {
             log.debugf("Slider moved to %v", event.slider)
         }
     }
-    app_render(app_context)
+    app_render()
 }
 
-app_render :: proc(app_context: ^App_Context) {
+app_render :: proc() {
     using app_context
     draw_context->begin_frame()
     gui.context_render(&gui_context)
@@ -110,7 +117,7 @@ app_render :: proc(app_context: ^App_Context) {
     draw_context->end_frame()
 }
 
-app_handle_event :: proc(app_context: ^App_Context, event: util.Window_Event) {
+app_handle_event :: proc( event: util.Window_Event) {
     using app_context
     #partial switch event.type {
     case .Window_Resize:

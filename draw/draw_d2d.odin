@@ -3,7 +3,7 @@ package draw
 
 import win "core:sys/windows"
 import "../d2d"
-import "../util"
+import "odinlib:util"
 
 D2D_Context :: struct {
     factory: ^d2d.ID2D1Factory,
@@ -328,7 +328,7 @@ D2D_VTable := Draw_Context_VTable {
     get_char_rect=d2d_get_char_rect,
 } 
 
-d2d_color :: proc(color: ^Color_f) -> ^d2d.D2D1_COLOR_F {
+d2d_color :: #force_inline proc(color: ^Color_f) -> ^d2d.D2D1_COLOR_F {
     return transmute(^d2d.D2D1_COLOR_F)color
 }
 

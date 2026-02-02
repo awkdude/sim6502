@@ -1,6 +1,6 @@
 package gui
 
-import "../util"
+import "odinlib:util"
 import "../draw"
 import "core:strings"
 import win "core:sys/windows"

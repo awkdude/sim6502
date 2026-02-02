@@ -10,7 +10,7 @@ import "core:log"
 // import stbtt "vendor:stb/truetype"
 // import "../freetype"
 import stbi "vendor:stb/image"
-import "../util"
+import "odinlib:util"
 import win "core:sys/windows"
 import "../d2d"
 

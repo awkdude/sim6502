@@ -1,27 +1,15 @@
 #+build windows
 package main
 
-import "core:fmt"
 import "core:log"
-import "core:os"
 import "core:time"
-import "core:slice"
-import "core:math"
-import "core:mem"
 import "core:c"
 import "base:intrinsics"
 import win "core:sys/windows"
-import sa "core:container/small_array"
-import "core:unicode"
-import "core:unicode/utf8"
 import "base:runtime"
-import "core:strings"
-import "core:c/libc"
-import "d2d"
-import "util"
+import "odinlib:util"
 import "draw"
 
-when util.PLATFORM_BACKEND == "native" {
 MENU_ID_QUIT     :: 100
 MENU_ID_DIRECT2D :: 101
 MENU_ID_SW       :: 102
@@ -33,15 +21,14 @@ global_context: runtime.Context
 bitmap_handle: win.HBITMAP
 bitmap_info: win.BITMAPINFO
 memory_device_context: win.HDC
-app_context: App_Context
 min_window_size, max_window_size: Maybe(util.vec2)
 
 // FIXME: Mouse position seems to be off after setting dpi awareness
 
 wide_string_literal :: intrinsics.constant_utf16_cstring
 
-Draw_Context_Backend_Type :: enum {Software, Direct2D}
-draw_context_backend := Draw_Context_Backend_Type.Direct2D
+Draw_Context_Backend_Type :: enum {Software, OpenGL, Direct2D}
+draw_context_backend := Draw_Context_Backend_Type.OpenGL
 draw_context: [Draw_Context_Backend_Type]draw.Draw_Context
 
 main :: proc() {
@@ -87,6 +74,59 @@ main :: proc() {
         nil
     )
     assert(window_handle != nil)
+    // opengl setup {{{
+    suggested_pixel_format_desc: win.PIXELFORMATDESCRIPTOR
+    pixel_format_desc := win.PIXELFORMATDESCRIPTOR {
+        nSize=size_of(win.PIXELFORMATDESCRIPTOR),
+        nVersion=1,
+        dwFlags=win.PFD_DRAW_TO_WINDOW | win.PFD_DOUBLEBUFFER | win.PFD_SUPPORT_OPENGL,
+        iPixelType=win.PFD_TYPE_RGBA,
+        iLayerType=win.PFD_MAIN_PLANE,
+        cColorBits=32,
+        cDepthBits=24,
+        cAlphaBits=8,
+        cStencilBits=8,
+    }
+    device_context := win.GetDC(window_handle)
+    pfd_index := win.ChoosePixelFormat(
+        device_context,
+        &pixel_format_desc,
+    )
+    win.DescribePixelFormat(
+        device_context,
+        pfd_index,
+        size_of(win.PIXELFORMATDESCRIPTOR),
+        &suggested_pixel_format_desc
+    )
+    win.SetPixelFormat(device_context, pfd_index, &suggested_pixel_format_desc)
+    gl_context := win.wglCreateContext(device_context)
+    win.wglMakeCurrent(device_context, gl_context)
+    when false && ODIN_DEBUG {
+        // FIXME: Causes weird memory bug. Look at Handmade Hero code
+        CreateContextAttribsARB: win.CreateContextAttribsARBType
+        win.gl_set_proc_address(&CreateContextAttribsARB, "wglCreateContextAttribsARB")
+        assert(CreateContextAttribsARB != nil, "no wglCreateContextAttribsARB")
+        attrib_list := []i32 {
+            win.WGL_CONTEXT_MAJOR_VERSION_ARB, GL_VERSION[0],
+            win.WGL_CONTEXT_MINOR_VERSION_ARB, GL_VERSION[1],
+            win.WGL_CONTEXT_FLAGS_ARB, (
+                win.WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB | win.WGL_CONTEXT_DEBUG_BIT_ARB
+            ),
+            win.WGL_CONTEXT_PROFILE_MASK_ARB, win.WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
+            0
+        }
+        // win.wglDeleteContext(gl_context)
+        gl_context = CreateContextAttribsARB(
+            device_context,
+            nil,
+            raw_data(attrib_list)
+        )
+        assert(gl_context != nil)
+        win.wglMakeCurrent(device_context, gl_context)
+    }
+    win.ReleaseDC(window_handle, device_context)
+    // }}}
+
     win.ShowWindow(window_handle, win.SW_SHOW)
     win.UpdateWindow(window_handle)
     // }}}
@@ -122,13 +162,23 @@ main :: proc() {
         }
     )
     setup_framebuffer()
-    draw_context[.Direct2D] = draw.new_draw_context_direct2d(window_handle)
-    assert(draw_context[.Direct2D].data!= nil)
-    app_context.draw_context = &draw_context[draw_context_backend]
-    app_context.handle_platform_command = handle_platform_command
-    app_init(&app_context)
+    #partial switch draw_context_backend {
+    case .Direct2D:
+        draw_context[draw_context_backend] = draw.new_draw_context_direct2d(window_handle)
+    case .OpenGL:
+        draw_context[draw_context_backend] = draw.new_draw_context_opengl()
+    }
+    assert(draw_context[draw_context_backend].data != nil)
+    app_init(App_Init{
+        draw_context = &draw_context[draw_context_backend],
+        handle_platform_command = handle_platform_command,
+    })
 
     running = true
+    SwapIntervalEXT: win.SwapIntervalEXTType
+    win.gl_set_proc_address(&SwapIntervalEXT, "wglSwapIntervalEXT")
+    assert(SwapIntervalEXT != nil, "no wglSwapIntervalEXT")
+    SwapIntervalEXT(1)
     loop: for {
         message: win.MSG
 
@@ -140,7 +190,7 @@ main :: proc() {
             }
         }
         app_context.draw_context = &draw_context[draw_context_backend]
-        app_update(&app_context)
+        app_update()
     }
 }
 
@@ -215,7 +265,7 @@ window_proc :: proc "stdcall" (
         device_context := win.BeginPaint(window_handle, &paintstruct)
         win.EndPaint(window_handle, &paintstruct)
         if running {
-            app_render(&app_context)
+            app_render()
         }
     case win.WM_CHAR:
         window_event = util.Window_Event {
@@ -359,7 +409,7 @@ window_proc :: proc "stdcall" (
     }
     if running {
         if event, ok := window_event.?; ok {
-            app_handle_event(&app_context, event)
+            app_handle_event(event)
         }
     }
     return exit_code
@@ -417,5 +467,4 @@ handle_platform_command :: proc(command: util.Platform_Command) {
             )
         )
     }
-}
 }

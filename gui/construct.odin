@@ -1,6 +1,6 @@
 package gui
 
-import "../util"
+import "odinlib:util"
 import "core:log"
 import "base:intrinsics"
 
@@ -37,13 +37,13 @@ create_control :: proc( // {{{
     parent: ^Control = nil) -> ^Control 
 { 
     parent := parent if parent != nil else ctx.root_control
-    assertf(
+    log.assertf(
         cons.type in allowed_child_types[parent.type],
         "%v cannot be a child of a %v",
         cons.type, parent.type
     )
     id := make_id(id_string)
-    if id != NIL_ID do assertf(id not_in ctx.control_map, "%v already exists!", id_string)
+    if id != NIL_ID do log.assertf(id not_in ctx.control_map, "%v already exists!", id_string)
     control := new_clone(
         Control {
             id=id,

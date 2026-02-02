@@ -1,6 +1,6 @@
 package draw
 
-import "../util"
+import "odinlib:util"
 
 SW_Context :: struct {
     pixmap: util.Pixmap,
