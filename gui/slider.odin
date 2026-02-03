@@ -78,11 +78,10 @@ slider_handle_event :: proc(
     }
 }
 
-slider_render :: proc(ctx: ^Context, control: ^Control) {
-    using ctx
+slider_render :: proc(using ctx: ^Context, control: ^Control) {
     slider := &control.slider
-    draw_context->push_command(draw.Stroke_Rect {
-        rect=control.rect,
+    draw.push_command(draw_context, draw.Stroke_Rect {
+        rect=rect_to_f(control.rect),
         color=draw.color_green,
         line_width=2,
     })
@@ -98,8 +97,8 @@ slider_render :: proc(ctx: ^Context, control: ^Control) {
         ),
         h=control.rect.h,
     }
-    draw_context->push_command(draw.Fill_Rect {
-        rect=fill_rect,
+    draw.push_command(draw_context, draw.Fill_Rect {
+        rect=rect_to_f(fill_rect),
         color=draw.color_red,
     })
 }

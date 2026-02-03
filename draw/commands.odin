@@ -65,14 +65,9 @@ Blit_Mono_To_Truecolor :: struct {
 
 Draw_Text :: struct {
     text: string,
-    font: rawptr,
+    font: ^Font,
     rect: Rectf,
     color: Color_f,
-    alignment: enum {
-        Leading,
-        Center,
-        Trailing,
-    }
 }
 
 Command :: union {
@@ -103,7 +98,7 @@ map_point :: proc(v: vec2f, rect: Rectf) -> vec2f {
 }
 
 fill_rect_nc :: proc(draw_context: ^Draw_Context, rc: BBoxf, color: Color_f, bbox: Rectf) {
-    draw_context->push_command(Fill_Rect {
+    push_command(draw_context, Fill_Rect {
         rect = util.bbox_to_rect(util.BBoxf {
             x0=map_coord(rc.x0, bbox.w, bbox.x),
             y0=map_coord(rc.y0, bbox.h, bbox.y),
@@ -121,7 +116,7 @@ stroke_rect_nc :: proc(
     line_width: i32,
     bbox: Rectf) 
 {
-    draw_context->push_command(Stroke_Rect {
+    push_command(draw_context, Stroke_Rect {
         rect = util.bbox_to_rect(util.BBoxf {
             x0=map_coord(rc.x0, bbox.w, bbox.x),
             y0=map_coord(rc.y0, bbox.h, bbox.y),
@@ -134,7 +129,7 @@ stroke_rect_nc :: proc(
 }
 
 stroke_line_nc :: proc(draw_context: ^Draw_Context, p0, p1: vec2f, color: Color_f, bbox: Rectf) {
-    draw_context->push_command(Stroke_Line {
+    push_command(draw_context, Stroke_Line {
         pts={
             map_point(p0, bbox),
             map_point(p1, bbox),
@@ -144,7 +139,7 @@ stroke_line_nc :: proc(draw_context: ^Draw_Context, p0, p1: vec2f, color: Color_
 }
 
 fill_tri_nc :: proc(draw_context: ^Draw_Context, v0, v1, v2: vec2f, color: Color_f, bbox: Rectf) {
-    draw_context->push_command(Fill_Tri {
+    push_command(draw_context, Fill_Tri {
         v0 = map_point(v0, bbox),
         v1 = map_point(v1, bbox),
         v2 = map_point(v2, bbox),
@@ -159,7 +154,7 @@ fill_circle_nc :: proc(
     color: Color_f, 
     bbox: Rectf)
 {
-    draw_context->push_command(Fill_Circle {
+    push_command(draw_context, Fill_Circle {
         origin = map_point(origin, bbox),
         radius = i32(radius * cast(f32)math.min(bbox.w, bbox.h)) / 2,
         color=color,

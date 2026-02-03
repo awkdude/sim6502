@@ -1,3 +1,4 @@
+#+ignore
 package draw
 
 import "odinlib:util"

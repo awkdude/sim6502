@@ -12,7 +12,7 @@ Button :: struct {
     label_len: int,
 }
 
-button :: proc(text: string, font: rawptr, scale: util.vec2f = {2.6, 1}) -> Control_Construct {
+button :: proc(text: string, font: ^draw.Font, scale: util.vec2f = {2.6, 1}) -> Control_Construct {
     cons := Control_Construct {
         flags={.Activatable},
         sizing=Sizing_DIP{dip={120, 45}},
@@ -37,8 +37,8 @@ button_render :: proc(using ctx: ^Context, control: ^Control) {
         )
         // fill_color = draw.color_yellow
     }
-    draw_context->push_command(draw.Fill_Rect{
-        rect=control.rect,
+    draw.push_command(draw_context, draw.Fill_Rect{
+        rect=rect_to_f(control.rect),
         color=fill_color,
     })
     // draw_context->push_command(draw.Draw_Text {

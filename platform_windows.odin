@@ -1,3 +1,4 @@
+#+ignore
 package main
 import win "core:sys/windows"
 import "core:strings"

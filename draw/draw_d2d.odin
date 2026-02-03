@@ -1,3 +1,4 @@
+#+ignore
 #+build windows
 package draw
 

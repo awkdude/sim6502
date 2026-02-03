@@ -7,18 +7,17 @@ import "core:strings"
 import "core:math/bits"
 import "core:os"
 import "core:log"
-// import stbtt "vendor:stb/truetype"
-// import "../freetype"
+import stbtt "vendor:stb/truetype"
 import stbi "vendor:stb/image"
 import "odinlib:util"
-import win "core:sys/windows"
-import "../d2d"
+import sa "core:container/small_array"
 
 vec2   :: util.vec2
 Rect   :: util.Rect
 BBox :: util.BBox
 Color_f  :: util.Color_f
 Color_4b :: util.Color_4b
+
 
 Vertex :: struct { 
     pos: vec2,
@@ -30,39 +29,120 @@ Vertex_uv :: struct {
     uv: vec2f,
 }
 
-Font :: rawptr
+Font :: struct {
+    font_data: []u8,
+    packedchar_array: [96]stbtt.packedchar,
+    font_info: stbtt.fontinfo,
+    atlas_pixmap: util.Pixmap,
+    atlas_tex_id: u32,
+    font_path: string,
+    font_size_px: i32,
+}
 
 Font_Resource_Type :: enum {
     System,
     File,
 }
 
-Draw_Context :: struct {
-    data: rawptr,
-    using vtable: ^Draw_Context_VTable,
+create_font :: proc(font_path: string, font_size_px: i32) -> Font {
+    font: Font
+    success: bool
+    font.font_data, success = os.read_entire_file_from_filename(font_path)
+    assert(success, "Font load error")
+    assert(stbtt.InitFont(&font.font_info, raw_data(font.font_data[:]), 0) == true)
+    font.atlas_pixmap = util.make_pixmap(512, 512, 1)
+    pack_context: stbtt.pack_context
+    stbtt.PackBegin(
+        &pack_context,
+        cast([^]u8)font.atlas_pixmap.pixels,
+        font.atlas_pixmap.w,
+        font.atlas_pixmap.h,
+        0,
+        1,
+        nil
+    )
+    stbtt.PackSetOversampling(&pack_context, 4, 4)
+    stbtt.PackFontRange(
+        &pack_context,
+        raw_data(font.font_data[:]),
+        0,
+        -cast(f32)font_size_px,
+        32,
+        96,
+        raw_data(font.packedchar_array[:])
+    )
+    stbtt.PackEnd(&pack_context)
+    font.atlas_tex_id = util.create_texture_from_pixmap(font.atlas_pixmap)
+    return font
 }
 
-Draw_Context_VTable :: struct {
-    push_clip_rect: proc(this: ^Draw_Context, rect: Rect),
-    pop_clip_rect: proc(this: ^Draw_Context),
-    begin_frame: proc(this: ^Draw_Context),
-    end_frame: proc(this: ^Draw_Context),
-    get_render_target_dpi: proc(this: ^Draw_Context) -> i32,
-    get_render_target_size: proc(this: ^Draw_Context) -> vec2,
-    measure_string: proc(this: ^Draw_Context, font: rawptr, text: string) -> vec2,
-    push_command: proc(this: ^Draw_Context, command: Command),
-    resize: proc(this: ^Draw_Context, size: vec2),
-    create_font: proc(
-        this: ^Draw_Context,
-        name: string,
-        size_dip: f32,
-        type: Font_Resource_Type = .System
-    ) -> Font,
-    get_char_rect: proc(
-        this: ^Draw_Context,
-        font: Font,
-        text: string,
-        char_index: int) -> (Rect, bool),
+get_text_width :: proc(font: ^Font, str: string) -> i32 {
+// {{{
+    width: f32
+    max_height: f32
+    pen_x: f32 = 0.0
+    for r in str { 
+        char_index := cast(i32)r - 32
+        pen_x += font.packedchar_array[char_index].xadvance
+    }
+    return cast(i32)math.round(pen_x)
+// }}}
+}
+
+get_text_height :: proc(font: ^Font) -> i32 {
+    return font.font_size_px
+}
+
+Draw_Context :: struct {
+    command_buffer: sa.Small_Array(1024, Command),
+    clip_rect_stack: sa.Small_Array(8, Rect),
+    renderer: Renderer,
+    render_size: vec2,
+}
+
+context_init :: proc(draw_context: ^Draw_Context) {
+    draw_context^ = {}
+    assert(renderer_init(&draw_context.renderer))
+}
+
+push_clip_rect :: proc(using draw_context: ^Draw_Context, rect: Rect, loc := #caller_location) {
+    assert(sa.push_back(&clip_rect_stack, rect), "Clip rect stack full", loc)
+}
+
+pop_clip_rect :: proc(using draw_context: ^Draw_Context, loc := #caller_location) {
+    _, pop_ok := sa.pop_back_safe(&clip_rect_stack)
+    assert(pop_ok, "Clip rect stack empty", loc)
+}
+
+begin_frame :: proc(draw_context: ^Draw_Context, render_size: vec2) {
+	sa.clear(&draw_context.command_buffer)
+    draw_context.render_size = render_size
+}
+
+end_frame :: proc(using draw_context: ^Draw_Context) {
+    renderer_begin_frame(
+        &renderer,
+        util.projection_mat_from_window_size(render_size)
+    )
+    defer renderer_end_frame(&renderer)
+    for command in sa.slice(&command_buffer) {
+    #partial switch cmd in command {
+    case Clear:
+        renderer_clear_color(&renderer, cmd.color)
+    case Fill_Rect:
+        renderer_push_quad(&renderer, cmd.rect, cmd.color)
+    case Stroke_Rect:
+        renderer_push_outline_rect(&renderer, cmd.rect, cmd.color, cast(f32)cmd.line_width)
+    }
+    }
+}
+
+// measure_string :: proc(draw_context: ^Draw_Context, font: ^Font, text: string) -> vec2 {
+// 	return {}
+// }
+
+push_command :: proc(using draw_context: ^Draw_Context, command: Command, loc := #caller_location) {
+    assert(sa.append(&command_buffer, command), "Too many draw commands!", loc)
 }
 
 color_4b_to_f :: proc(color: Color_4b) -> Color_f {

@@ -8,7 +8,7 @@ import "base:intrinsics"
 import win "core:sys/windows"
 import "base:runtime"
 import "odinlib:util"
-import "draw"
+import gl "vendor:OpenGL"
 
 MENU_ID_QUIT     :: 100
 MENU_ID_DIRECT2D :: 101
@@ -22,14 +22,11 @@ bitmap_handle: win.HBITMAP
 bitmap_info: win.BITMAPINFO
 memory_device_context: win.HDC
 min_window_size, max_window_size: Maybe(util.vec2)
+SwapIntervalEXT: win.SwapIntervalEXTType
 
 // FIXME: Mouse position seems to be off after setting dpi awareness
 
 wide_string_literal :: intrinsics.constant_utf16_cstring
-
-Draw_Context_Backend_Type :: enum {Software, OpenGL, Direct2D}
-draw_context_backend := Draw_Context_Backend_Type.OpenGL
-draw_context: [Draw_Context_Backend_Type]draw.Draw_Context
 
 main :: proc() {
     context.logger = log.create_console_logger()
@@ -130,52 +127,17 @@ main :: proc() {
     win.ShowWindow(window_handle, win.SW_SHOW)
     win.UpdateWindow(window_handle)
     // }}}
-
-    draw_context[.Software] = draw.new_draw_context_sw(
-        draw.Draw_Context_VTable{
-            get_render_target_dpi = proc(draw_context: ^draw.Draw_Context) -> i32 {
-                return cast(i32)win.GetDpiForWindow(window_handle)
-            },
-
-            end_frame = proc(draw_context: ^draw.Draw_Context) {
-                device_context := win.GetDC(window_handle)
-                rect: win.RECT
-                win.GetClientRect(window_handle, &rect)
-                win.BitBlt(
-                    device_context, 
-                    0,
-                    0,
-                    rect.right-rect.left,
-                    rect.bottom-rect.top, 
-                    memory_device_context, 
-                    0,
-                    0,
-                    win.SRCCOPY
-                )
-                win.ReleaseDC(window_handle, device_context)
-                // TODO: sleep for remainder of frame
-                time.sleep(16666 * time.Microsecond)
-            },
-            resize = proc(_: ^draw.Draw_Context, _: util.vec2) {
-                setup_framebuffer()
-            },
-        }
-    )
-    setup_framebuffer()
-    #partial switch draw_context_backend {
-    case .Direct2D:
-        draw_context[draw_context_backend] = draw.new_draw_context_direct2d(window_handle)
-    case .OpenGL:
-        draw_context[draw_context_backend] = draw.new_draw_context_opengl()
-    }
-    assert(draw_context[draw_context_backend].data != nil)
+    gl.load_up_to(3, 3, win.gl_set_proc_address)
     app_init(App_Init{
-        draw_context = &draw_context[draw_context_backend],
+        window_size=vec2{
+            PRE_INIT_WINDOW_SIZE.x,
+            PRE_INIT_WINDOW_SIZE.y,
+        },
         handle_platform_command = handle_platform_command,
+        dots_per_inch=cast(i32)win.GetDpiForWindow(window_handle),
     })
 
     running = true
-    SwapIntervalEXT: win.SwapIntervalEXTType
     win.gl_set_proc_address(&SwapIntervalEXT, "wglSwapIntervalEXT")
     assert(SwapIntervalEXT != nil, "no wglSwapIntervalEXT")
     SwapIntervalEXT(1)
@@ -189,55 +151,16 @@ main :: proc() {
                 break loop
             }
         }
-        app_context.draw_context = &draw_context[draw_context_backend]
         app_update()
-    }
-}
 
-setup_framebuffer :: proc() { // {{{
-    sw_context := cast(^draw.SW_Context)(draw_context[.Software].data)
-    if sw_context == nil do return
-    if bitmap_handle != nil {
-        win.DeleteObject(cast(win.HGDIOBJ)bitmap_handle)
-        bitmap_handle = nil
+        device_context := win.GetDC(window_handle)
+        win.SwapBuffers(device_context)
+        win.ReleaseDC(window_handle, device_context)
     }
-    rect: win.RECT
-    win.GetClientRect(window_handle, &rect)
-    width := cast(i32)(rect.right - rect.left)
-    height := cast(i32)(rect.bottom - rect.top)
-    sw_context.pixmap.w = width
-    sw_context.pixmap.h = height
-    bitmap_info = win.BITMAPINFO {
-        bmiHeader={
-            biSize=cast(u32)size_of(win.BITMAPINFOHEADER),
-            biWidth=width,
-            biHeight=-height,
-            biPlanes=1,
-            biBitCount=32,
-            biCompression=win.BI_RGB,
-        },
-    }
-    device_context := win.GetDC(window_handle)
-    if memory_device_context == nil {
-        memory_device_context = win.CreateCompatibleDC(device_context)
-    }
-    bitmap_handle = win.CreateDIBSection(
-        nil,
-        &bitmap_info,
-        0,
-        cast(^^rawptr)&sw_context.pixmap.pixels,
-        nil,
-        0
-    )
-    assert(bitmap_handle != nil)
-    assert(sw_context.pixmap.pixels != nil)
-    win.SelectObject(memory_device_context, cast(win.HGDIOBJ)bitmap_handle)
-    win.ReleaseDC(window_handle, device_context)
 }
-///}}}
 
 win32_cursor: cstring
-// window proc {{{
+
 window_proc :: proc "stdcall" (
     window_handle: 
     win.HWND, 
@@ -245,27 +168,24 @@ window_proc :: proc "stdcall" (
     wparam: win.WPARAM, 
     lparam: win.LPARAM) -> win.LRESULT 
 {
+    // {{{
     context = global_context
     exit_code: win.LRESULT
     window_event: Maybe(util.Window_Event)
     switch message {
     case win.WM_CREATE:
     case win.WM_COMMAND:
-        switch win.LOWORD(wparam) {
-        case MENU_ID_QUIT:
-            win.PostQuitMessage(0)
-        case MENU_ID_DIRECT2D:
-            draw_context_backend = .Direct2D
-        case MENU_ID_SW:
-            draw_context_backend = .Software
-            setup_framebuffer()
-        }
     case win.WM_PAINT:
         paintstruct: win.PAINTSTRUCT
         device_context := win.BeginPaint(window_handle, &paintstruct)
         win.EndPaint(window_handle, &paintstruct)
         if running {
             app_render()
+            SwapIntervalEXT(0)
+            d := win.GetDC(window_handle)
+            win.SwapBuffers(d)
+            win.ReleaseDC(window_handle, d)
+            SwapIntervalEXT(1)
         }
     case win.WM_CHAR:
         window_event = util.Window_Event {
@@ -413,10 +333,11 @@ window_proc :: proc "stdcall" (
         }
     }
     return exit_code
-}
 // }}}
+}
 
 handle_platform_command :: proc(command: util.Platform_Command) {
+// {{{
     #partial switch command.type {
     case .Quit:
         win.DestroyWindow(window_handle)
@@ -467,4 +388,5 @@ handle_platform_command :: proc(command: util.Platform_Command) {
             )
         )
     }
+// }}}
 }

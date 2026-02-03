@@ -53,7 +53,7 @@ update_layout :: proc(ctx: ^Context, root: ^Control = nil) {
         if root == nil do return
     }
     offset: vec2
-    stack := make([dynamic]^Control, context.temp_allocator)
+    stack := make([dynamic]^Control, 0, ctx.num_controls, context.temp_allocator)
     root := root if root != nil else ctx.root_control
     append(&stack, root)
     // Reset pass
@@ -124,7 +124,7 @@ scroll_control :: proc( // {{{
     case vec2:
         control.scroll_offset += util.scale_vec2(
             arg, 
-            cast(f32)util.dip_to_px(32, ctx.draw_context->get_render_target_dpi())
+            cast(f32)util.dip_to_px(32, ctx.dots_per_inch)
         )
         control.scroll_offset.x = math.clamp(
             control.scroll_offset.x,

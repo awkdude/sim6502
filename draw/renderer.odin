@@ -94,8 +94,8 @@ renderer_init :: proc(using renderer: ^Renderer) -> bool {
     )
     depth = 0.0
     source_shader = util.Source_Shader {
-        vertex_source_path = "shaders/text_shader.vert",
-        fragment_source_path = "shaders/text_shader.frag",
+        vertex_source_path = "resources/text_shader.vert",
+        fragment_source_path = "resources/text_shader.frag",
         use_2d_default=true,
         on_update_proc=proc(program: u32, _: rawptr) {
             tex_indices: [MAX_NUM_TEXTURE_UNITS]i32
@@ -131,6 +131,10 @@ renderer_begin_frame :: proc(using renderer: ^Renderer, u_proj: mat4) {
         &projection_mat 
     )
 // }}}
+}
+
+renderer_clear_color :: proc(using renderer: ^Renderer, color: Color4f) {
+    gl.ClearColor(color.r, color.g, color.b, color.a)
 }
 
 renderer_end_frame :: proc(using renderer: ^Renderer) {

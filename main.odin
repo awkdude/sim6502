@@ -8,32 +8,42 @@ import "draw"
 import "odinlib:util"
 import "core:log"
 import "base:intrinsics"
+import gl "vendor:OpenGL"
 
 PRE_INIT_WINDOW_TITLE := "SIM6502"
 PRE_INIT_WINDOW_SIZE := util.vec2{600, 600}
 
 app_context: ^App_Context
+vec2 :: util.vec2
 
 App_Context :: struct {
-    font: rawptr,
+    font: draw.Font,
+    dots_per_inch: i32,
     gui_context: gui.Context,
-    draw_context: ^draw.Draw_Context,
+    draw_context: draw.Draw_Context,
     handle_platform_command: proc(_: util.Platform_Command),
     auto_add: bool,
+    window_size: vec2,
 }
 
 App_Init :: struct {
-    draw_context: ^draw.Draw_Context,
     handle_platform_command: proc(_: util.Platform_Command),
+    dots_per_inch: i32,
+    window_size: vec2,
 }
 
 app_init :: proc(I: App_Init) {
     app_context = new(App_Context)
+    using app_context
     // TODO: validate draw_context
-    app_context.font = I.draw_context->create_font("consolas", 30)
-    app_context.gui_context.draw_context = I.draw_context
-    app_context.gui_context.handle_platform_command = handle_platform_command 
-    gui_context: gui.Context
+    draw.context_init(&draw_context)
+    font = draw.create_font("resources/consola.ttf", 30)
+    handle_platform_command = I.handle_platform_command 
+    dots_per_inch = I.dots_per_inch
+    window_size = I.window_size
+    gui_context.dots_per_inch = dots_per_inch
+    gui_context.draw_context = &draw_context
+    gui_context.handle_platform_command = handle_platform_command 
     gui.context_init(&gui_context)
     // gui.create_control(&gui_context, "first", gui.text_box(&gui_context, "Hello"))
     // gui.create_control(&gui_context, "reg_sp", gui.text_box(&gui_context, "SP", 0xffff))
@@ -58,14 +68,13 @@ app_init :: proc(I: App_Init) {
     //         gui.list_item(&gui_context, entry.name)
     //     )
     // }
-    text_box := gui.create_control(&gui_context, "txt", gui.text_box(app_context.font))
+    text_box := gui.create_control(&gui_context, "txt", gui.text_box(&font))
     slider := gui.create_control(&gui_context, "slid", gui.slider(0, 10, 3))
     // button1 := gui.create_control(&gui_context, "btn1", gui.button("BUTTON 1"))
     // button2 := gui.create_control(&gui_context, "btn2", gui.button("BUTTON 2"))
     // button3 := gui.create_control(&gui_context, "btn3", gui.button("BUTTON 3"))
-    min_size := util.dip_to_px(96*3, I.draw_context->get_render_target_dpi())
-    app_context.gui_context = gui_context
-    app_context.draw_context = I.draw_context
+    min_size := util.dip_to_px(96*3, dots_per_inch)
+    gui_context = gui_context
     handle_platform_command({type=.Set_Window_Min_Size, size=util.vec2{min_size, min_size}})
 }
 
@@ -80,7 +89,7 @@ app_update :: proc() {
         button_name := fmt.bprintf(button_name_buf[:], "btn%v", button_count)
         button_label_buf: [16]u8
         button_label := fmt.bprintf(button_label_buf[:], "NEW BTN %v", button_count)
-        gui.create_control(&gui_context, button_name, gui.button(button_label, font))
+        gui.create_control(&gui_context, button_name, gui.button(button_label, &font))
         button_count += 1
         handle_platform_command(util.Platform_Command {
             title=button_label,
@@ -102,26 +111,33 @@ app_update :: proc() {
 
 app_render :: proc() {
     using app_context
-    draw_context->begin_frame()
+    log.debug(window_size)
+    gl.Viewport(0, 0, window_size.x, window_size.y)
+    draw.begin_frame(&draw_context, window_size)
     gui.context_render(&gui_context)
     text_buf: [32]u8
     text := fmt.bprintf(text_buf[:], "Auto add: %v", "ON" if auto_add else "OFF")
-    draw_context->push_command(
+    draw.push_command(&draw_context, 
         draw.Draw_Text {
-            rect=util.size_to_rect(draw_context->measure_string(font, text)),
-            font=font,
+            rect=gui.rect_to_f(util.size_to_rect(
+                vec2 {
+                    draw.get_text_width(&font, text),
+                    draw.get_text_height(&font),
+                })),
+            font=&font,
             text=text,
             color=draw.color_black,
         }
     )
-    draw_context->end_frame()
+    draw.end_frame(&draw_context)
 }
 
 app_handle_event :: proc( event: util.Window_Event) {
     using app_context
     #partial switch event.type {
     case .Window_Resize:
-        draw_context->resize(event.vec2)
+        // draw.resize(&ctx.draw_context, event.vec2)
+        window_size = event.vec2
     case .Window_Close:
         handle_platform_command(util.Platform_Command {type=.Quit})
     case .Key:

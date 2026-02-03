@@ -7,10 +7,10 @@ import win "core:sys/windows"
 
 Label :: struct {
     text: string,
-    font: rawptr,
+    font: ^draw.Font,
 }
 
-label :: proc(text: string, font: rawptr) -> Control_Construct {
+label :: proc(text: string, font: ^draw.Font) -> Control_Construct {
     text:= strings.clone(text)
     control := Control_Construct {
         type=.Label,
@@ -24,23 +24,22 @@ label :: proc(text: string, font: rawptr) -> Control_Construct {
     return control
 }
 
-label_render :: proc(ctx: ^Context, control: ^Control) {
-    using ctx
-    draw_context->push_command(draw.Stroke_Rect {
-        rect=control.rect,
+label_render :: proc(using ctx: ^Context, control: ^Control) {
+    draw.push_command(draw_context, draw.Stroke_Rect {
+        rect=rect_to_f(control.rect),
         color=draw.color_blue,
         line_width=2,
     })
     if is_selected(control) {
-        draw_context->push_command(draw.Fill_Rect {
-            rect=control.rect,
+        draw.push_command(draw_context, draw.Fill_Rect {
+            rect=rect_to_f(control.rect),
             color={0.0, 0.0, 1.0, 0.3},
         })
     }
-    draw_context->push_command(draw.Draw_Text {
+    draw.push_command(draw_context, draw.Draw_Text {
         text=control.label.text,
         font=control.label.font,
-        rect=control.rect,
+        rect=rect_to_f(control.rect),
         color=draw.color_black,
     })
 }

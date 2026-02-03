@@ -1,5 +1,6 @@
 package gui
 
+import "../draw"
 import "odinlib:util"
 import "core:log"
 import "base:intrinsics"
@@ -16,7 +17,7 @@ Control_Construct :: struct {
 DEFAULT_SIZING_TEXT_SCALE :: util.vec2f { 1.1, 1.1 }
 
 Sizing_Text :: struct {
-    font: rawptr,
+    font: ^draw.Font,
     text: string,
     scale: util.vec2f,
 }
@@ -65,10 +66,13 @@ create_control :: proc( // {{{
     control.parent = parent
     switch sizing in cons.sizing {
     case Sizing_Text:
-        text_size := ctx.draw_context->measure_string(sizing.font, sizing.text)
+        text_size := vec2 {
+            draw.get_text_width(sizing.font, sizing.text),
+            draw.get_text_height(sizing.font),
+        }
         control.rect = util.size_to_rect(util.scale_vec2(text_size, sizing.scale))
     case Sizing_DIP:
-        dpi := ctx.draw_context->get_render_target_dpi()
+        dpi := ctx.dots_per_inch
         control.rect = util.size_to_rect(vec2{
             util.dip_to_px(sizing.dip.x, dpi),
             util.dip_to_px(sizing.dip.y, dpi),

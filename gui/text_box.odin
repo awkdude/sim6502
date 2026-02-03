@@ -17,10 +17,10 @@ Text_Box :: struct {
     buffer: [8]rune,
     len, caret_position: int,
     input_type: util.Radix,
-    font: rawptr,
+    font: ^draw.Font,
 }
 
-text_box :: proc(font: rawptr, initial_text: string = "") -> Control_Construct {
+text_box :: proc(font: ^draw.Font, initial_text: string = "") -> Control_Construct {
     cons := Control_Construct {
         flags={.Activatable},
         type=.Text_Box,
@@ -140,11 +140,10 @@ text_box_get_value :: proc(ctx: ^Context, control: ^Control) -> (int, bool) {
 }
 
 
-text_box_render :: proc(ctx: ^Context, control: ^Control) {
-    using ctx
+text_box_render :: proc(using ctx: ^Context, control: ^Control) {
     text_box := &control.text_box
-    draw_context->push_command(draw.Stroke_Rect{
-        rect=control.rect,
+    draw.push_command(ctx.draw_context, draw.Stroke_Rect{
+        rect=rect_to_f(control.rect),
         color=draw.color_black,
         line_width=2,
     })
@@ -154,18 +153,22 @@ text_box_render :: proc(ctx: ^Context, control: ^Control) {
             control.text_box.buffer[:control.text_box.len],
             context.temp_allocator
         )
-        draw_context->push_command(draw.Draw_Text {
+        draw.push_command(ctx.draw_context, draw.Draw_Text {
             text=control_text,
             font=control.text_box.font,
-            rect=control.rect,
+            rect=rect_to_f(control.rect),
             color=draw.color_black,
         })
         // FIXME: Doesn't deal with text_box.len being 0
         if ctx.active_control == control {
-            caret_rect, ok := draw_context->get_char_rect(
-                control.text_box.font,
-                control_text,
-                text_box.caret_position
+            caret_rect := util.size_to_rect(
+                vec2 {
+                    draw.get_text_width(
+                        control.text_box.font,
+                        control_text[text_box.caret_position:text_box.caret_position+1],
+                    ),
+                    draw.get_text_height( control.text_box.font)
+                }
             )
             caret_rect.x += control.rect.x
             caret_rect.y += control.rect.y
@@ -173,8 +176,8 @@ text_box_render :: proc(ctx: ^Context, control: ^Control) {
             v := cast(f32)math.sin(math.TAU * secs)
             fill_color := draw.color_orange
             fill_color.a = 1.0 if v >= 0.0 else 0.0
-            draw_context->push_command(draw.Fill_Rect {
-                rect=caret_rect,
+            draw.push_command(ctx.draw_context, draw.Fill_Rect {
+                rect=rect_to_f(caret_rect),
                 color=util.Color_f{ 1.0, 0.0, 0.0, 0.4 },
             })
         }

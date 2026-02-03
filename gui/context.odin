@@ -27,6 +27,7 @@ vec2_to_f :: proc(v: vec2) -> vec2f {
     return { cast(f32)v.x, cast(f32)v.y }
 }
 
+
 // NOTE: Should this be aligned?
 ID_Type :: [16]u8
 NIL_ID: ID_Type : {} 
@@ -55,20 +56,18 @@ Context :: struct {
     num_controls: int,
     hover_tick: time.Tick,
     ease_type: int,
+    dots_per_inch: i32,
+    window_size: vec2,
 }
 
 context_init :: proc(ctx: ^Context, allocator := context.allocator) {
 // {{{
-    ctx^ = {}
     ctx.control_allocator = allocator
     assert(ctx.draw_context != nil, "No draw context set")
-    assert(ctx.draw_context.data != nil, "No backend data pointer set")
-    assert(ctx.draw_context.vtable != nil, "No backend vtable set")
-    dots_per_inch := ctx.draw_context->get_render_target_dpi()
-    padding_value := util.dip_to_px(48, dots_per_inch)
+    assert(ctx.dots_per_inch != 0, "DPI needs to be set")
+    padding_value := util.dip_to_px(48, ctx.dots_per_inch)
     padding := vec2{padding_value, padding_value}
-    ctx.small_font = ctx.draw_context->create_font("consolas", 20)
-    render_size := ctx.draw_context->get_render_target_size()
+    render_size := vec2{100, 100} // NOTE: Temporary render size
     ctx.root_control = new_clone(
         Control {
             id=make_id("root"),
@@ -90,11 +89,10 @@ context_init :: proc(ctx: ^Context, allocator := context.allocator) {
 // }}}
 }
 
-
-change_ease :: proc(ctx: ^Context, dec: bool = false) {
+change_ease :: proc(ctx: ^Context, offset: int) {
     ctx.ease_type = util.wrap(
-        ctx.ease_type - 1 if dec else ctx.ease_type + 1,
-        len([ease.Ease]rawptr)
+        ctx.ease_type + offset,
+        len(ease.Ease)
     )
     ctx.hover_tick = time.tick_now()
     log.debugf("Changed ease to %v", cast(ease.Ease)ctx.ease_type)
@@ -127,9 +125,9 @@ context_handle_event :: proc(ctx: ^Context, window_event: util.Window_Event) {
                     if found do scroll_control(ctx, scrollable_control, .Bottom)
                 }
             case util.KEY_PAGEUP:
-                change_ease(ctx)
+                change_ease(ctx, 1)
             case util.KEY_PAGEDOWN:
-                change_ease(ctx, true)
+                change_ease(ctx, -1)
             }
 
         }
@@ -249,30 +247,30 @@ context_handle_event :: proc(ctx: ^Context, window_event: util.Window_Event) {
 context_render :: proc(using ctx: ^Context) {
 // {{{
     update_layout(ctx)
-    draw_context->push_command(draw.Clear{color=draw.color_white})
+    draw.push_command(ctx.draw_context, draw.Clear{color=draw.color_red})
     stack := make([dynamic]^Control, context.temp_allocator)
     append(&stack, ctx.root_control)
-    clip_rect := util.size_to_rect(draw_context->get_render_target_size())
-    draw_context->push_clip_rect(clip_rect)
+    clip_rect := util.size_to_rect(window_size)
+    draw.push_clip_rect(ctx.draw_context, clip_rect)
     theta := time.duration_seconds(time.tick_since({}))
     thick_max: f64 = 20.0
     v := thick_max * (math.sin(theta) * 0.5 + 0.5)
     for len(stack) > 0 {
         control := pop(&stack)
         if control == hovered_control {
-            draw_context->push_command(draw.Stroke_Rect{
+            draw.push_command(ctx.draw_context, draw.Stroke_Rect{
                 color=draw.color_cyan,
                 line_width=cast(i32)v,
-                rect=clip_rect,
+                rect=rect_to_f(clip_rect),
             })
         }
         render_proc := render_proc_table[control.type]
         if render_proc != nil do render_proc(ctx, control)
-        draw_context->pop_clip_rect()
+        draw.pop_clip_rect(ctx.draw_context)
         #reverse for child in control.children {
             append(&stack, child)
             clip_rect = control.rect
-            draw_context->push_clip_rect(clip_rect)
+            draw.push_clip_rect(ctx.draw_context, clip_rect)
         }
     }
 // }}}
