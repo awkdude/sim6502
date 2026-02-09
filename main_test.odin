@@ -2,7 +2,7 @@
 
 package main
 
-import emu "emu_c02"
+import emu "src/emu_c02"
 import "core:testing"
 import "core:strconv"
 import "core:strings"
@@ -10,6 +10,8 @@ import "core:log"
 
 @(test)
 argss :: proc(t: ^testing.T) {
+    testing.expect_value(t, size_of(Maybe(^int)), size_of(^int)+1)
+    testing.expect_value(t, size_of(Maybe(int)), size_of(^int))
     testing.expect_value(t, emu.parse_arg("$4000").number, 0x4000)
     testing.expect_value(t, emu.parse_arg("#4000").number, 4000)
     testing.expect_value(t, emu.parse_arg("%4000").number, 0)

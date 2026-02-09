@@ -1,3 +1,4 @@
+#+ignore
 package platform
 
 import "core:mem"
