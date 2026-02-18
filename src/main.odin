@@ -21,9 +21,12 @@ App_Init :: struct {
     handle_platform_command: proc(_: util.Platform_Command),
     dots_per_inch: i32,
     window_size: vec2,
+    graphics_backend: util.Renderer_Backend,
 }
 
-App_Update :: struct {}
+App_Update :: struct {
+    graphics_backend: ^util.Renderer_Backend,
+}
 
 App_Context :: struct {
     font: draw.Font,
@@ -31,6 +34,7 @@ App_Context :: struct {
     gui_context: gui.Context,
     draw_context: draw.Draw_Context,
     handle_platform_command: proc(_: util.Platform_Command),
+    // renderers: [util.Graphics_Backend]Renderer,
     running, auto_add: bool,
     window_size: vec2,
 }
@@ -78,7 +82,7 @@ init :: proc(I: App_Init) {
         // )
     }
     text_box := gui.create_control(&gui_context, "txt", gui.text_box(&font))
-    slider := gui.create_control(&gui_context, "slid", gui.slider(0, 10, 3))
+    slider := gui.create_control(&gui_context, "slid", gui.slider(0, 20, 3))
     // button1 := gui.create_control(&gui_context, "btn1", gui.button("BUTTON 1"))
     // button2 := gui.create_control(&gui_context, "btn2", gui.button("BUTTON 2"))
     // button3 := gui.create_control(&gui_context, "btn3", gui.button("BUTTON 3"))
@@ -133,7 +137,7 @@ update :: proc(_: App_Update) -> bool {
 render :: proc() {
     using app_context
     // TODO: Move to renderer
-    draw.begin(&draw_context, window_size)
+    draw.begin(&draw_context, app_context.window_size)
     defer draw.end(&draw_context)
     draw.push_command(&draw_context, draw.Clear{color=draw.color_white})
     gui.render(&gui_context)

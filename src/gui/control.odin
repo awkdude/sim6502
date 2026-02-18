@@ -7,6 +7,7 @@ import "core:math"
 import "core:strings"
 
 Control_Flag :: enum {
+    Alive,
     Activatable,
     Handle_Event_On_Hover,
     Selectable,
@@ -25,12 +26,12 @@ Deactive_Flag :: enum {
 }
 
 Control :: struct {
+    flags: bit_set[Control_Flag; u32],
     index: int,
     rect: Rect,
     // pos_type: Position_Type,
     id: ID_Type,
     using data: Control_Data,
-    flags: bit_set[Control_Flag],
     offset, padding, scroll_offset: vec2, 
     children_union_rect: Rect,
     type: Control_Type,
@@ -53,59 +54,46 @@ update_layout :: proc(ctx: ^Context, root: ^Control = nil) {
     if ctx.layout_updated {
         if root == nil do return
     }
-    offset: vec2
-    stack := make([dynamic]^Control, 0, ctx.num_controls, context.temp_allocator)
-    root := root if root != nil else ctx.root_control
-    append(&stack, root)
-    // Reset pass
-    for len(stack) > 0 {
-        control := pop(&stack)
+    _update_layout :: proc(ctx: ^Context, control: ^Control) {
         control.offset = control.padding
         control.children_union_rect = {}
-        #reverse for child in control.children {
-            append(&stack, child)
-        }
-    }
-    clear(&stack)
-    append(&stack, root)
-
-    // Relative positioning pass
-    for len(stack) > 0 {
-        control := pop(&stack)
         if control.parent != nil {
-            using control.parent
             if .Grow_Width in control.flags {
-                control.rect.w = rect.w - rect.x
+                control.rect.w = control.parent.rect.w - control.parent.rect.x
             }
-            log.assertf(
-                .Grow_Height not_in control.flags, 
-                "`%s` cannot have a growing height right now!",
-                name(control)
-            )
-            position: vec2
-            if .Vertical_Layout in flags {
-                if (offset.y + control.rect.h) > rect.h {
-                    offset.y = padding.y
-                    offset.x = padding.x + control.rect.w
+            position := control.parent.offset
+            if .Vertical_Layout in control.parent.flags {
+                if (control.parent.offset.y + control.rect.h) > control.parent.rect.h {
+                    control.parent.offset.y = control.parent.padding.y
+                    control.parent.offset.x = control.parent.padding.x + control.rect.w
                 }
-                offset.y += padding.y + control.rect.h
+                control.parent.offset.y += control.parent.padding.y + control.rect.h
             } else {
-                if (offset.x + control.rect.w) > rect.w {
-                    offset.x = padding.x
-                    offset.y += padding.y + control.rect.h 
+                if (control.parent.offset.x + control.rect.w) > control.parent.rect.w {
+                    control.parent.offset.x =  control.parent.padding.x
+                    control.parent.offset.y += control.parent.padding.y + control.rect.h 
                 } 
-                position = offset
-                offset.x += padding.x + control.rect.w
+                control.parent.offset.x += control.parent.padding.x + control.rect.w
             }
-            control.rect.x = position.x - scroll_offset.x
-            control.rect.y = position.y - scroll_offset.y
-            children_union_rect = util.union_rect(children_union_rect, control.rect)
+            control.parent.scroll_offset = {} // TODO: delete
+            control.rect.x = position.x - control.parent.scroll_offset.x
+            control.rect.y = position.y - control.parent.scroll_offset.y
+            assert(control.rect.x >= 0)
+            assert(control.rect.y >= 0)
+            log.debugf("%s (%v): %v", name(control), control.type, control.rect)
+            control.parent.children_union_rect = util.union_rect(
+                control.parent.children_union_rect,
+                control.rect
+            )
         }
-        #reverse for child in control.children {
-            append(&stack, child)
+        for child in control.children {
+            _update_layout(ctx, child)
         }
     }
-    ctx.layout_updated = true
+
+    _update_layout(ctx, ctx.root_control)
+
+   ctx.layout_updated = true
  // }}}
 }
 
@@ -113,12 +101,13 @@ Extremity :: enum {
     Top,
     Bottom,
 } 
-scroll_control :: proc( // {{{
+scroll_control :: proc( 
     ctx: ^Context,
     control: ^Control,
     arg: union {vec2, Extremity}
 ) 
 {
+// {{{
     log.debugf("Scrolling %v by %v", name(control), arg)
     old_scroll_offset := control.scroll_offset
     switch arg in arg {
@@ -150,9 +139,9 @@ scroll_control :: proc( // {{{
     if control.scroll_offset != old_scroll_offset {
         update_layout(ctx, control)
     }
+// }}}
 }
 
-// }}}
 
 Observer :: struct {
     data: rawptr,

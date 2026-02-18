@@ -7,6 +7,8 @@ import "odinlib:util"
 import "../draw"
 import "core:time"
 import "core:math"
+import "core:mem"
+import "core:slice"
 import "core:math/ease"
 
 vec2 :: util.vec2
@@ -40,8 +42,58 @@ make_id :: proc(s: string) -> ID_Type {
     return id
 }
 
+Control_Pool :: struct {
+    buf: [128]Control,
+    offset: int,
+}
+
+control_pool_allocator_proc :: proc(
+    allocator_data: rawptr,
+    mode: runtime.Allocator_Mode,
+    size, alignment: int,
+    old_memory: rawptr,
+    old_size: int,
+    loc := #caller_location) -> ([]u8, runtime.Allocator_Error)
+{
+// {{{
+    pool := cast(^Control_Pool)allocator_data
+    #partial switch mode {
+    case .Alloc, .Alloc_Non_Zeroed:
+        assert(size == size_of(Control), loc=loc)
+        for &entry in pool.buf {
+            if .Alive not_in entry.flags {
+                entry.flags += {.Alive}
+                return mem.ptr_to_bytes(&entry), nil
+            }
+        }
+        log.error("No space in control pool!", loc)
+        return nil, .Out_Of_Memory
+	case .Free: 
+        control := cast(^Control)old_memory
+        if .Alive not_in control.flags {
+            log.warn("Control was never allocated", loc)
+        }
+        control^ = {}
+	case .Free_All: 
+        slice.zero(pool.buf[:])
+    case:
+        unimplemented()
+    }
+    return nil, nil
+// }}}
+}
+
+control_pool_allocator :: proc(pool: ^Control_Pool) -> runtime.Allocator {
+    return {
+        data=pool,
+        procedure=control_pool_allocator_proc,
+    }
+}
+
+
 Context :: struct {
     handle_platform_command: proc(_: util.Platform_Command),
+    control_pool: Control_Pool,
     control_allocator: runtime.Allocator,
     root_control: ^Control,
     hovered_control, active_control, parent_control: ^Control,
@@ -63,6 +115,7 @@ Context :: struct {
 
 init :: proc(ctx: ^Context, window_size: vec2, allocator := context.allocator) {
 // {{{
+    // ctx.control_allocator = control_pool_allocator(&ctx.control_pool)
     ctx.control_allocator = allocator
     assert(ctx.draw_context != nil, "No draw context set")
     assert(ctx.dots_per_inch != 0, "DPI needs to be set")
@@ -199,6 +252,7 @@ handle_event :: proc(ctx: ^Context, window_event: util.Window_Event) {
             root_rect,
             window_rect,
         )
+        log.debugf("Root control resized to %v", ctx.root_control.rect)
         ctx.layout_updated = false
         // TODO:
     }
@@ -247,14 +301,12 @@ handle_event :: proc(ctx: ^Context, window_event: util.Window_Event) {
 
 render :: proc(ctx: ^Context) {
 // {{{
-    // FIXME: push and pop ordering is off!
     update_layout(ctx)
     // draw.push_command(ctx.draw_context, draw.Clear{color=draw.color_red})
     _render :: proc(ctx: ^Context, control: ^Control) {
         thick_max: f64 = 20.0
         theta := time.duration_seconds(time.tick_since({}))
-        v := thick_max * (math.sin(theta) * 0.5 + 0.5)
-        draw.push_clip_rect(ctx.draw_context, control.rect)
+        v := thick_max * (math.sin(theta * 2.0) * 0.5 + 0.5)
         if control == ctx.hovered_control {
             draw.push_command(ctx.draw_context, draw.Stroke_Rect{
                 color=draw.color_cyan,
@@ -264,6 +316,7 @@ render :: proc(ctx: ^Context) {
         }
         render_proc := render_proc_table[control.type]
         if render_proc != nil do render_proc(ctx, control)
+        draw.push_clip_rect(ctx.draw_context, control.rect)
         for child in control.children {
             _render(ctx, child)
         }
@@ -373,7 +426,8 @@ Event :: struct {
 }
 
 push_event :: proc(ctx: ^Context, event: Event) {
-    queue.push_back(&ctx.events, event)
+    ok, _ := queue.push_back(&ctx.events, event)
+    assert(ok, "Queue full!")
     if event.control != nil {
         if observer, ok := event.control.observer.?; ok {
             observer.callback(event.control, ctx, event.control, event)

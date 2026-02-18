@@ -9,7 +9,10 @@ import win "core:sys/windows"
 import "base:runtime"
 import "odinlib:util"
 import gl "vendor:OpenGL"
+import sa "core:container/small_array"
 import "src"
+import "core:slice"
+import "src/draw"
 
 when util.PLATFORM_BACKEND == "native" {
 MENU_ID_QUIT     :: 100
@@ -25,11 +28,15 @@ bitmap_info: win.BITMAPINFO
 memory_device_context: win.HDC
 min_window_size, max_window_size: Maybe(util.vec2)
 SwapIntervalEXT: win.SwapIntervalEXTType
+framebuffer_pixmap: util.Pixmap
+renderer_backend := util.Renderer_Backend.Opengl
 
 // FIXME: Mouse position seems to be off after setting dpi awareness
 
 wide_string_literal :: intrinsics.constant_utf16_cstring
 previous_frame_tick: time.Tick
+window_events: sa.Small_Array(64, util.Window_Event)
+
 
 main :: proc() {
     t: time.Tick
@@ -102,27 +109,27 @@ main :: proc() {
     win.SetPixelFormat(device_context, pfd_index, &suggested_pixel_format_desc)
     gl_context := win.wglCreateContext(device_context)
     win.wglMakeCurrent(device_context, gl_context)
-    when false && ODIN_DEBUG {
-        // FIXME: Causes weird memory bug. Look at Handmade Hero code
+    when true && ODIN_DEBUG {
         CreateContextAttribsARB: win.CreateContextAttribsARBType
         win.gl_set_proc_address(&CreateContextAttribsARB, "wglCreateContextAttribsARB")
         assert(CreateContextAttribsARB != nil, "no wglCreateContextAttribsARB")
         attrib_list := []i32 {
-            win.WGL_CONTEXT_MAJOR_VERSION_ARB, GL_VERSION[0],
-            win.WGL_CONTEXT_MINOR_VERSION_ARB, GL_VERSION[1],
+            win.WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
+            win.WGL_CONTEXT_MINOR_VERSION_ARB, 3,
             win.WGL_CONTEXT_FLAGS_ARB, (
                 win.WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB | win.WGL_CONTEXT_DEBUG_BIT_ARB
             ),
             win.WGL_CONTEXT_PROFILE_MASK_ARB, win.WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
             0
         }
-        // win.wglDeleteContext(gl_context)
+        old_gl_context := gl_context
         gl_context = CreateContextAttribsARB(
             device_context,
             nil,
             raw_data(attrib_list)
         )
         assert(gl_context != nil)
+        win.wglDeleteContext(old_gl_context)
         win.wglMakeCurrent(device_context, gl_context)
     }
     win.ReleaseDC(window_handle, device_context)
@@ -138,6 +145,7 @@ main :: proc() {
         window_handle,
         &client_rect
     )
+    update_framebuffer_win32()
     src.init(src.App_Init{
         window_size=util.vec2{
             client_rect.right-client_rect.left,
@@ -153,6 +161,7 @@ main :: proc() {
     SwapIntervalEXT(0)
     loop: for {
         message: win.MSG
+        sa.clear(&window_events)
 
         for win.PeekMessageW(&message, nil, 0, 0, win.PM_REMOVE) {
             win.TranslateMessage(&message)
@@ -166,15 +175,44 @@ main :: proc() {
         }
 
         device_context := win.GetDC(window_handle)
-        win.SwapBuffers(device_context)
+        if renderer_backend == .Opengl {
+            win.SwapBuffers(device_context)
+        } else {   
+            win.BitBlt(
+                device_context,
+                0,
+                0,
+                framebuffer_pixmap.w,
+                framebuffer_pixmap.h,
+                memory_device_context, 
+                0,
+                0,
+                win.SRCCOPY
+            )
+        }
         win.ReleaseDC(window_handle, device_context)
-        if false {
+        if true {
             util.wait_frame_interval(&previous_frame_tick, 16 * time.Millisecond)
         }
     }
 }
 
 win32_cursor: cstring
+mouse_position: util.vec2
+
+test_update :: proc(_: src.App_Update) -> bool {
+    area := framebuffer_pixmap.w * framebuffer_pixmap.h
+    pixels := cast([^]util.Color4b)framebuffer_pixmap.pixels
+    x := cast(f32)mouse_position.x / cast(f32)framebuffer_pixmap.w
+    y := cast(f32)mouse_position.y / cast(f32)framebuffer_pixmap.h
+    slice.fill((cast([^]util.Color4b)pixels)[:area], util.color4f_to_4b({x, 0, y, 0}))
+    draw._fill_rect(&framebuffer_pixmap, {mouse_position.x, mouse_position.y, 100, 100}, draw.color_magenta)
+    device_context := win.GetDC(window_handle)
+    win.BitBlt(device_context, 0, 0, framebuffer_pixmap.w, framebuffer_pixmap.h,
+    memory_device_context, 0, 0, win.SRCCOPY)
+    win.ReleaseDC(window_handle, device_context)
+    return true
+}
 
 window_proc :: proc "stdcall" (
     window_handle: 
@@ -183,7 +221,7 @@ window_proc :: proc "stdcall" (
     wparam: win.WPARAM, 
     lparam: win.LPARAM) -> win.LRESULT 
 {
-    // {{{
+// {{{
     context = global_context
     exit_code: win.LRESULT
     window_event: Maybe(util.Window_Event)
@@ -193,15 +231,30 @@ window_proc :: proc "stdcall" (
     case win.WM_PAINT:
         paintstruct: win.PAINTSTRUCT
         device_context := win.BeginPaint(window_handle, &paintstruct)
-        defer win.EndPaint(window_handle, &paintstruct)
         if running {
-            // src.render()
-            // SwapIntervalEXT(0)
-            // d := win.GetDC(window_handle)
-            // win.SwapBuffers(d)
-            // win.ReleaseDC(window_handle, d)
-            // SwapIntervalEXT(1)
+            if renderer_backend == .Opengl {
+                // win.SwapBuffers(device_context)
+            } else if renderer_backend == .Software {
+                src.render()
+                win.BitBlt(
+                    device_context,
+                    0,
+                    0,
+                    framebuffer_pixmap.w,
+                    framebuffer_pixmap.h,
+                    memory_device_context, 
+                    0,
+                    0,
+                    win.SRCCOPY
+                )
+                // SwapIntervalEXT(0)
+                // d := win.GetDC(window_handle)
+                // win.SwapBuffers(d)
+                // win.ReleaseDC(window_handle, d)
+                // SwapIntervalEXT(1)
+            }
         }
+        win.EndPaint(window_handle, &paintstruct)
     case win.WM_CHAR:
         window_event = util.Window_Event {
             type=.Char_Input,
@@ -289,6 +342,10 @@ window_proc :: proc "stdcall" (
             }
         }
     case win.WM_MOUSEMOVE:
+        mouse_position={
+                win.GET_X_LPARAM(lparam), 
+                win.GET_Y_LPARAM(lparam) 
+            }
         window_event = util.Window_Event {
             type=.Mouse_Move,
             vec2={
@@ -319,6 +376,7 @@ window_proc :: proc "stdcall" (
             type=.Window_Resize,
             vec2={width, height},
         }
+        update_framebuffer_win32()
     case win.WM_GETMINMAXINFO:
         min_max_info := transmute(^win.MINMAXINFO)lparam
         if min_size, ok := min_window_size.?; ok {
@@ -403,6 +461,45 @@ handle_platform_command :: proc(command: util.Platform_Command) {
             )
         )
     }
+// }}}
+}
+
+update_framebuffer_win32 :: proc() {
+// {{{
+    rect: win.RECT
+    win.GetClientRect(window_handle, &rect)
+    w, h := rect.right - rect.left, rect.bottom - rect.top
+    framebuffer_pixmap.w = w
+    framebuffer_pixmap.h = h
+    framebuffer_pixmap.pitch = w
+    bitmap_info = win.BITMAPINFO {
+        bmiHeader={
+            biSize=u32(size_of(win.BITMAPINFOHEADER)),
+            biWidth=w,
+            biHeight=-h,
+            biPlanes=1,
+            biBitCount=32,
+            biCompression=win.BI_RGB,
+        },
+    }
+    device_context := win.GetDC(window_handle)
+    if memory_device_context != nil {
+        win.DeleteDC(memory_device_context)
+    }
+    memory_device_context = win.CreateCompatibleDC(device_context)
+    bitmap_handle = win.CreateDIBSection(
+        nil,
+        &bitmap_info, 
+        0,
+        cast(^^rawptr)&framebuffer_pixmap.pixels,
+        nil,
+        0
+    )
+    assert(bitmap_handle != nil)
+    assert(framebuffer_pixmap.pixels != nil)
+    win.SelectObject(memory_device_context, cast(win.HGDIOBJ)bitmap_handle)
+    win.ReleaseDC(window_handle, device_context)
+    stride := ((((bitmap_info.bmiHeader.biWidth * cast(i32)bitmap_info.bmiHeader.biBitCount) + 31) & ~cast(i32)31) >> 3)
 // }}}
 }
 }

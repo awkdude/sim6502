@@ -3,6 +3,7 @@ package draw
 import "core:mem"
 import "core:fmt"
 import "core:math"
+import "base:runtime"
 import "core:strings"
 import "core:math/bits"
 import "core:os"
@@ -16,7 +17,8 @@ vec2   :: util.vec2
 Rect   :: util.Rect
 BBox :: util.BBox
 Color_f  :: util.Color_f
-Color_4b :: util.Color_4b
+Color_4b :: util.Color4b
+Color4b :: Color_4b
 
 
 Vertex :: struct { 
@@ -43,6 +45,23 @@ Font_Resource_Type :: enum {
     System,
     File,
 }
+
+Renderer_ :: struct {
+    data: rawptr,
+    begin_frame: proc(this: ^Renderer_, u_proj: mat4),
+    end_frame: proc(this: ^Renderer_),
+    clear_color: proc(this: ^Renderer, color: Color4f),
+    set_clip_rect: proc(this: ^Renderer, rect: Rect),
+    push_quad_textured: proc(
+        this: ^Renderer,
+        rect: Rectf,
+        color: Color4f,
+        tex_id: u32,
+        st: [2]vec2f = {{0.0, 0.0}, {1.0, 1.0}},
+    ),
+    push_quad_color: proc(renderer: ^Renderer, rect: Rectf, color: Color4f),
+}
+
 
 create_font :: proc(font_path: string, font_size_px: i32) -> Font {
     font: Font
@@ -146,9 +165,14 @@ draw_text :: proc(
 // }}} 
 }
 
+Command_ :: struct {
+    command: Command,
+    location: runtime.Source_Code_Location,
+}
+
 Draw_Context :: struct {
-    command_buffer: sa.Small_Array(1024, Command),
-    clip_rect_stack: sa.Small_Array(8, Rect),
+    command_buffer: sa.Small_Array(1024, Command_),
+    clip_rect_stack: sa.Small_Array(16, Rect),
     renderer: Renderer,
     render_size: vec2,
 }
@@ -159,18 +183,14 @@ init :: proc(draw_context: ^Draw_Context) {
 }
 
 push_clip_rect :: proc(draw_context: ^Draw_Context, rect: Rect, loc := #caller_location) {
-    when true {
-        assert(sa.push_back(&draw_context.clip_rect_stack, rect), "Clip rect stack full", loc)
-        renderer_set_clip_rect(&draw_context.renderer, rect)
-    }
+    assert(sa.push_back(&draw_context.clip_rect_stack, rect), "Clip rect stack full", loc)
+    push_command(draw_context, Clip_Rect{rect=rect}, loc)
 }
 
 pop_clip_rect :: proc(draw_context: ^Draw_Context, loc := #caller_location) {
-    when true {
-        clip_rect, pop_ok := sa.pop_back_safe(&draw_context.clip_rect_stack)
-        assert(pop_ok, "Clip rect stack empty", loc)
-        renderer_set_clip_rect(&draw_context.renderer, clip_rect)
-    }
+    clip_rect, pop_ok := sa.pop_back_safe(&draw_context.clip_rect_stack)
+    assert(pop_ok, "Clip rect stack empty", loc)
+    push_command(draw_context, Clip_Rect{rect=clip_rect}, loc)
 }
 
 begin :: proc(draw_context: ^Draw_Context, render_size: vec2) {
@@ -185,9 +205,10 @@ end :: proc(draw_context: ^Draw_Context) {
         &draw_context.renderer,
         util.projection_mat_from_window_size(draw_context.render_size)
     )
+    log.debugf("Window size: %v", draw_context.render_size)
     defer renderer_end_frame(&draw_context.renderer)
     for command in sa.slice(&draw_context.command_buffer) {
-        #partial switch cmd in command {
+        #partial switch cmd in command.command {
         case Clear:
             renderer_clear_color(&draw_context.renderer, cmd.color)
         case Fill_Rect:
@@ -215,7 +236,8 @@ end :: proc(draw_context: ^Draw_Context) {
                     draw_context.render_size.y - (cmd.rect.y - cmd.rect.h),
                     cmd.rect.w,
                     cmd.rect.h
-                }
+                },
+                command.location,
             )
         }
     }
@@ -226,26 +248,12 @@ end :: proc(draw_context: ^Draw_Context) {
 // }
 
 push_command :: proc(draw_context: ^Draw_Context, command: Command, loc := #caller_location) {
-    assert(sa.append(&draw_context.command_buffer, command), "Too many draw commands!", loc)
+    assert(sa.append(&draw_context.command_buffer, Command_{command=command, location=loc}), "Too many draw commands!", loc)
 }
 
-color_4b_to_f :: proc(color: Color_4b) -> Color_f {
-    return Color_f {
-        cast(f32)color.r / 255.0,
-        cast(f32)color.g / 255.0,
-        cast(f32)color.b / 255.0,
-        cast(f32)color.a / 255.0,
-    }
-}
+color_4b_to_f :: util.color4b_to_4f
 
-color_f_to_4b :: proc(color: Color_f) -> Color_4b {
-    return Color_4b {
-        r=cast(u8)math.round(color.r * 255.0),
-        g=cast(u8)math.round(color.g * 255.0),
-        b=cast(u8)math.round(color.b * 255.0),
-        a=cast(u8)math.round(color.a * 255.0),
-    }
-}
+color_f_to_4b :: util.color4f_to_4b
 
 alpha_blend :: proc(top, bottom: Color_f) -> Color_f {
     one_minus_src_alpha := 1.0 - top.a
@@ -279,7 +287,7 @@ _fill_rect :: proc(pixmap: ^Pixmap, r: Rect, color: Color_f) {
     if y1 > pixmap.h do y1 = pixmap.h 
 
     pixels := cast([^]Color_4b)pixmap.pixels
-    row := y0 * pixmap.w
+    row := y0 * pixmap.pitch
     
     if color.a >= 1.0 {
         c_u8 := color_f_to_4b(color)
@@ -287,7 +295,7 @@ _fill_rect :: proc(pixmap: ^Pixmap, r: Rect, color: Color_f) {
             for x in x0..<x1 {
                 pixels[row + x] = c_u8
             }
-            row += pixmap.w
+            row += pixmap.pitch
         }
     } else {
         one_minus_src_alpha := 1.0 - color.a
@@ -298,7 +306,7 @@ _fill_rect :: proc(pixmap: ^Pixmap, r: Rect, color: Color_f) {
                 blended_c.a = 1.0
                 pixels[row + x] = color_f_to_4b(blended_c)
             }
-            row += pixmap.w
+            row += pixmap.pitch
         }
     }
 }

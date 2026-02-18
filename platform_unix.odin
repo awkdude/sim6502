@@ -61,20 +61,6 @@ process_events :: proc() {
             // }
 
         case .Mouse_Button:
-            // window_event = util.Window_Event {
-            //     type=.Mouse_Button,
-            //     mouse_button={
-            //         button=event.mouse_button.button,
-            //         pressed=event.mouse_button.pressed,
-            //     }
-            // }
-            // if event.mouse_button.pressed {
-            //     U.input.mouse_buttons += {event.mouse_button.button}
-            //     U.input.mouse_buttons_pressed += {event.mouse_button.button}
-            // } else {
-            //     U.input.mouse_buttons -= {event.mouse_button.button}
-            //     U.input.mouse_buttons_released += {event.mouse_button.button}
-            // }
         case .Mouse_Motion:
             window_size := platform.get_window_size() 
             clear_color = {
@@ -83,17 +69,10 @@ process_events :: proc() {
                 cast(f32)event.vec2.x / cast(f32)window_size.x, 
                 1.0
             }
-            // U.did_mouse_move = true
-            // U.input.mouse_pos = event.vec2
         case .Mouse_Wheel:
-            // U.input.mouse_wheel_delta += {event.mouse_wheel.dx, event.mouse_wheel.dy}
         case .Character:
-            // U.input.text[U.input.text_count] = cast(rune)event.char_codepoint
-            // U.input.text_count += 1
         case .Resize:
-            // U.did_window_resize = true
         case .Close:
-            // U.close_requested = true
         case .Gain_Focus:
         case .Lose_Focus:
         case .Mouse_Enter: 
@@ -103,7 +82,7 @@ process_events :: proc() {
         if event, ok := window_event.?; ok {
             // TODO:
             log.debug(window_event)
-            app_handle_event(event)
+            src.handle_event(event)
         }
     }
 }
@@ -122,7 +101,7 @@ main :: proc() {
         return
     }
     running = true
-    app_init({})
+    src.init({})
     for running {
         process_events()
         sw_context := cast(^draw.SW_Context)draw_context.data
@@ -131,7 +110,7 @@ main :: proc() {
             &sw_context.pixmap.w,
             &sw_context.pixmap.h,
         )
-        app_update()
+        src.update({})
         draw._fill(
             &sw_context.pixmap, 
             clear_color

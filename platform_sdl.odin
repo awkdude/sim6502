@@ -9,8 +9,13 @@ import sdl "vendor:sdl3"
 import sdl_img "vendor:sdl3/image"
 import gl "vendor:OpenGL"
 import "src"
+import "src/draw"
+import "core:slice"
+import "base:runtime"
 
 when util.PLATFORM_BACKEND == "sdl" {
+
+USE_GAMEPAD :: false
 
 sdl_window: ^sdl.Window
 sdl_gamepad: ^sdl.Gamepad
@@ -22,13 +27,17 @@ keycode_map: map[int]u32
 sdl_set_proc_address :: proc(p: rawptr, name: cstring) {
     p := cast(^rawptr)p
     p^ = cast(rawptr)sdl.GL_GetProcAddress(name)
-} 
+}
 
 main :: proc() {
 // {{{
     context.logger = log.create_console_logger()
     context.logger.options -= {.Date}
-    if !sdl.Init({.VIDEO, .EVENTS, .GAMEPAD}) {
+    window_flags := sdl.InitFlags {.VIDEO, .EVENTS }
+    when USE_GAMEPAD {
+        window_flags += {.GAMEPAD}
+    }
+    if !sdl.Init(window_flags) {
         log.panic("Could not init SDL")
     }
     sdl_window = sdl.CreateWindow(
@@ -57,6 +66,7 @@ main :: proc() {
         // },
         window_size={400, 400},
     })
+
     sdl.GL_SetSwapInterval(1)
     _ = sdl.StartTextInput(sdl_window)
 
@@ -74,17 +84,30 @@ main :: proc() {
         //     gamepad_state=gamepad_state,
         //     is_gamepad_connected=gamepad_ok,
         // }
+
+
         if !src.update({}) do return
         sdl.GL_SwapWindow(sdl_window)
     }
 // }}}
 }
 
-set_gamepad_rumble_sdl :: proc(weak, strong: f32) {
-    if sdl_gamepad != nil {
-        weak_ := cast(u16)(math.clamp(weak, 0.0, 1.0) * cast(f32)bits.U16_MAX)
-        strong_ := cast(u16)(math.clamp(strong, 0.0, 1.0) * cast(f32)bits.U16_MAX)
-        sdl.RumbleGamepad(sdl_gamepad, weak_, strong_, 5 * 1000)
+mouse_position: vec2
+
+test_update :: proc(_: src.App_Update) -> bool {
+    window_surface := sdl.GetWindowSurface(sdl_window)
+    area := (window_surface.pitch / 4) * window_surface.h
+    pixels := cast([^]util.Color4b)window_surface.pixels
+    x := cast(f32)mouse_position.x / cast(f32)window_surface.w
+    y := cast(f32)mouse_position.y / cast(f32)window_surface.h
+    slice.fill((cast([^]util.Color4b)pixels)[:area], util.color4f_to_4b({x, 0, y, 0}))
+    sdl.UpdateWindowSurface(sdl_window)
+    return true
+}
+
+test_handle_event :: proc(event: util.Window_Event) {
+    if event.type == .Key && event.key.keycode == util.KEY_ESCAPE && !event.key.pressed {
+        running = false
     }
 }
 
@@ -96,29 +119,28 @@ handle_events :: proc() {
     for sdl.PollEvent(&sdl_event) {
         // TODO: Set source_window for all events
         #partial switch sdl_event.type {
-        case .KEY_DOWN, .KEY_UP: {
+        case .KEY_DOWN, .KEY_UP: 
             window_event = util.Window_Event {
                 type=.Key,
                 key={
-                    pressed=(sdl_event.type==.KEY_DOWN),
-                    // FIXME: translate these!
+                    pressed=sdl_event.key.down,
                     keycode=translate_sdl_key_to_keycode(cast(u32)sdl_event.key.key),
                 }
             }
-        }
+            // runtime.debug_trap()
         case .MOUSE_BUTTON_DOWN, .MOUSE_BUTTON_UP:
             // TODO: may have to check for sdl_event.button.clicks
             mouse_button: util.Mouse_Button
-            switch cast(sdl.MouseButtonFlag)sdl_event.button.button {
-            case .LEFT:
+            switch sdl_event.button.button {
+            case sdl.BUTTON_LEFT:
                 mouse_button = .Left
-            case .MIDDLE:
+            case sdl.BUTTON_MIDDLE:
                 mouse_button = .Middle
-            case .RIGHT:
+            case sdl.BUTTON_RIGHT:
                 mouse_button = .Right
-            case .X1:
+            case sdl.BUTTON_X1:
                 mouse_button = .X1
-            case .X2:
+            case sdl.BUTTON_X2:
                 mouse_button = .X2
             }
             window_event = util.Window_Event {
@@ -130,6 +152,8 @@ handle_events :: proc() {
                     position={cast(i32)sdl_event.button.x, cast(i32)sdl_event.button.y},
                 }
             }
+        case .WINDOW_EXPOSED, .WINDOW_PIXEL_SIZE_CHANGED:
+            // test_update({})
         case .WINDOW_RESIZED:
             window_event = util.Window_Event {
                 type=.Window_Resize,
@@ -148,6 +172,8 @@ handle_events :: proc() {
             }
         }
         case .MOUSE_MOTION: {
+            // DELETE
+            mouse_position = {cast(i32)sdl_event.motion.x, cast(i32)sdl_event.motion.y}
             window_event = util.Window_Event {
                 type=.Mouse_Move,
                 vec2={
@@ -203,7 +229,22 @@ handle_platform_command_sdl :: proc(command: util.Platform_Command) {
 // }}}
 }
 
-get_gamepad_state_sdl :: proc() -> (util.Gamepad_State, bool) { // {{{
+set_gamepad_rumble_sdl :: proc(weak, strong: f32) {
+    when USE_GAMEPAD {
+        if sdl_gamepad != nil {
+            weak_ := cast(u16)(math.clamp(weak, 0.0, 1.0) * cast(f32)bits.U16_MAX)
+            strong_ := cast(u16)(math.clamp(strong, 0.0, 1.0) * cast(f32)bits.U16_MAX)
+            sdl.RumbleGamepad(sdl_gamepad, weak_, strong_, 5 * 1000)
+        }
+    }
+}
+
+
+get_gamepad_state_sdl :: proc() -> (util.Gamepad_State, bool) {
+// {{{
+    when !USE_GAMEPAD {
+        return {}, false
+    }
     if sdl_gamepad == nil {
         if sdl.HasGamepad() {
             count: i32
@@ -317,7 +358,9 @@ get_gamepad_state_sdl :: proc() -> (util.Gamepad_State, bool) { // {{{
     }
     // }}}
     return gamepad_state, true
-} // }}}
+// }}}
+} 
+
 
 // NOTE: A-Z, 0-9, F1-F12 not needed
 sdl_key_to_keycode_mappings := []struct { k: int, v: u32 } {

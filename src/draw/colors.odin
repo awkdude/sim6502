@@ -1,5 +1,9 @@
 package draw
 
+a_to_b :: proc "contextless" (n: string) -> i32 {
+    return len(s)
+}
+
 color_white   :: Color_f { 1.000, 1.000, 1.000, 1.0 }
 color_red     :: Color_f { 1.000, 0.000, 0.000, 1.0 }
 color_green   :: Color_f { 0.000, 1.000, 0.000, 1.0 }
@@ -13,3 +17,5 @@ color_orange  :: Color_f { 1.000, 0.647, 0.000, 1.0 }
 color_indigo  :: Color_f { 0.300, 0.000, 0.500, 1.0 }
 color_coral   :: Color_f { 1.000, 0.500, 0.310, 1.0 }
 color_purple  :: Color_f { 0.500, 0.000, 0.500, 1.0 }
+
+n :: a_to_b("abc")

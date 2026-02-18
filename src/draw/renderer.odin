@@ -161,6 +161,12 @@ renderer_end_frame :: proc(renderer: ^Renderer) {
         gl.BindTexture(gl.TEXTURE_2D, tex_id)
     }
     gl.BindBuffer(gl.ARRAY_BUFFER, renderer.vbo)
+    gl.BufferData(
+        gl.ARRAY_BUFFER,
+        size_of(R_Vertex) * sa.cap(renderer.vertices), 
+        nil, 
+        gl.DYNAMIC_DRAW
+    )
     gl.BufferSubData(
         gl.ARRAY_BUFFER, 
         0,
@@ -179,8 +185,12 @@ renderer_flush :: #force_inline proc(renderer: ^Renderer) {
 }
 
 
-renderer_set_clip_rect :: proc(renderer: ^Renderer, clip_rect: Rect) {
-    gl.Scissor(clip_rect.x, clip_rect.y, clip_rect.w, clip_rect.h)
+renderer_set_clip_rect :: proc(renderer: ^Renderer, clip_rect: Rect, loc := #caller_location) {
+    assert(clip_rect.x >= 0, loc=loc)
+    assert(clip_rect.y >= 0, loc=loc)
+    assert(clip_rect.w >= 0, loc=loc)
+    assert(clip_rect.h >= 0, loc=loc)
+    // gl.Scissor(clip_rect.x, clip_rect.y, clip_rect.w, clip_rect.h)
 }
 
 renderer_push_quad_textured :: proc(
@@ -255,7 +265,7 @@ renderer_push_outline_rect :: proc(
     line_width: f32 = 3.0,
 ) 
 {
-    // {{{
+// {{{
     // Top {{{
     renderer_push_quad(
         renderer,
@@ -304,7 +314,7 @@ renderer_push_outline_rect :: proc(
         color,
     )
     // }}}
-    //}}} 
+//}}} 
 }
 
 renderer_push_quad :: proc {

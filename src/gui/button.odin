@@ -10,6 +10,7 @@ import "../draw"
 Button :: struct {
     label_buf: [16]u8,
     label_len: int,
+    font: ^draw.Font,
 }
 
 button :: proc(text: string, font: ^draw.Font, scale: util.vec2f = {2.6, 1}) -> Control_Construct {
@@ -17,7 +18,8 @@ button :: proc(text: string, font: ^draw.Font, scale: util.vec2f = {2.6, 1}) -> 
         flags={.Activatable},
         sizing=Sizing_DIP{dip={120, 45}},
         type=.Button,
-        children=slice.clone([]Control_Construct{label(text, font)}, context.temp_allocator)
+        button={font=font},
+        // children=slice.clone([]Control_Construct{label(text, font)}, context.temp_allocator)
     }
     return cons
 }
@@ -41,12 +43,12 @@ button_render :: proc(ctx: ^Context, control: ^Control) {
         rect=rect_to_f(control.rect),
         color=fill_color,
     })
-    // draw_context->push_command(draw.Draw_Text {
-    //     text=transmute(string)control.button.label_buf[:control.button.label_len],
-    //     font=ctx.font,
-    //     rect=control.rect,
-    //     color=draw.color_black,
-    // })
+    draw.push_command(ctx.draw_context, draw.Draw_Text {
+        text=transmute(string)control.button.label_buf[:control.button.label_len],
+        font=control.button.font,
+        rect=rect_to_f(control.rect),
+        color=draw.color_black,
+    })
 }
 
 button_handle_event :: proc(

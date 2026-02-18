@@ -9,7 +9,7 @@ import "base:intrinsics"
 Control_Construct :: struct {
     using data: Control_Data,
     type: Control_Type,
-    flags: bit_set[Control_Flag],
+    flags: bit_set[Control_Flag; u32],
     children: []Control_Construct,
     sizing: Sizing,
 }
@@ -42,7 +42,8 @@ create_control :: proc(
     log.assertf(
         cons.type in allowed_child_types[parent.type],
         "%v cannot be a child of a %v",
-        cons.type, parent.type
+        cons.type, 
+        parent.type
     )
     id := make_id(id_string)
     if id != NIL_ID do log.assertf(id not_in ctx.control_map, "%v already exists!", id_string)
