@@ -8,6 +8,7 @@ import "gui"
 import "draw"
 import "core:mem"
 import "odinlib:util"
+import sa "core:container/small_array"
 import "core:log"
 import "base:intrinsics"
 
@@ -32,6 +33,7 @@ App_Context :: struct {
     font: draw.Font,
     dots_per_inch: i32,
     gui_context: gui.Context,
+    gui_stack: sa.Small_Array(3, gui.Context),
     draw_context: draw.Draw_Context,
     handle_platform_command: proc(_: util.Platform_Command),
     // renderers: [util.Graphics_Backend]Renderer,
@@ -63,8 +65,9 @@ init :: proc(I: App_Init) {
     // gui.create_control(&gui_context, "first", gui.text_box(&gui_context, "Hello"))
     // gui.create_control(&gui_context, "reg_sp", gui.text_box(&gui_context, "SP", 0xffff))
     // button := gui.create_control(&gui_context, "button", gui.button(&gui_context, "Click Me!"))
-    current_directory_fd, open_err := os.open(os.get_current_directory())
-    dir_list, read_err := os.read_dir(current_directory_fd, 64)
+    dir_path, _ := os.get_working_directory(context.temp_allocator)
+    current_directory_fd, open_err := os.open(dir_path)
+    dir_list, read_err := os.read_dir(current_directory_fd, 64, context.temp_allocator)
     if read_err != nil {
         log.fatal("Could not list current working directory")
     }
@@ -82,7 +85,7 @@ init :: proc(I: App_Init) {
         // )
     }
     text_box := gui.create_control(&gui_context, "txt", gui.text_box(&font))
-    slider := gui.create_control(&gui_context, "slid", gui.slider(0, 20, 3))
+    slider := gui.create_control(&gui_context, "slid", gui.slider(0, 5, 3))
     // button1 := gui.create_control(&gui_context, "btn1", gui.button("BUTTON 1"))
     // button2 := gui.create_control(&gui_context, "btn2", gui.button("BUTTON 2"))
     // button3 := gui.create_control(&gui_context, "btn3", gui.button("BUTTON 3"))

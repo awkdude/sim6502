@@ -258,64 +258,6 @@ renderer_push_quad_color :: proc(renderer: ^Renderer, rect: Rectf, color: Color4
     renderer_push_quad_textured(renderer, rect, color, get_white_tex_id()) 
 }
 
-renderer_push_outline_rect :: proc(
-    renderer: ^Renderer,
-    rect: Rectf,
-    color: Color4f,
-    line_width: f32 = 3.0,
-) 
-{
-// {{{
-    // Top {{{
-    renderer_push_quad(
-        renderer,
-        Rectf {
-            rect.x-line_width,
-            rect.y-line_width,
-            rect.w+line_width,
-            line_width,
-        },
-        color,
-    )
-    // }}}
-    // Bottom {{{
-    renderer_push_quad(
-        renderer,
-        Rectf {
-            rect.x-line_width,
-            rect.y+rect.h,
-            rect.w+line_width*2,
-            line_width,
-        },
-        color,
-    )
-    // }}}
-    // Left {{{
-    renderer_push_quad(
-        renderer,
-        Rectf {
-            rect.x-line_width,
-            rect.y,
-            line_width,
-            rect.h,
-        },
-        color,
-    )
-    // }}}
-    // Right {{{
-    renderer_push_quad(
-        renderer,
-        Rectf {
-            rect.x+rect.w,
-            rect.y-line_width,
-            line_width,
-            rect.h+line_width,
-        },
-        color,
-    )
-    // }}}
-//}}} 
-}
 
 renderer_push_quad :: proc {
     renderer_push_quad_color, 

@@ -12,6 +12,9 @@ import "src"
 import "src/draw"
 import "core:slice"
 import "base:runtime"
+import "core:time"
+
+USE_TEST :: false
 
 when util.PLATFORM_BACKEND == "sdl" {
 
@@ -30,7 +33,7 @@ sdl_set_proc_address :: proc(p: rawptr, name: cstring) {
 }
 
 main :: proc() {
-// {{{
+// {{{ 
     context.logger = log.create_console_logger()
     context.logger.options -= {.Date}
     window_flags := sdl.InitFlags {.VIDEO, .EVENTS }
@@ -86,8 +89,12 @@ main :: proc() {
         // }
 
 
-        if !src.update({}) do return
-        sdl.GL_SwapWindow(sdl_window)
+        when !USE_TEST {
+            if !src.update({}) do return
+            sdl.GL_SwapWindow(sdl_window)
+        } else {
+            if !test_update({}) do return
+        }
     }
 // }}}
 }
@@ -101,12 +108,28 @@ test_update :: proc(_: src.App_Update) -> bool {
     x := cast(f32)mouse_position.x / cast(f32)window_surface.w
     y := cast(f32)mouse_position.y / cast(f32)window_surface.h
     slice.fill((cast([^]util.Color4b)pixels)[:area], util.color4f_to_4b({x, 0, y, 0}))
+    pixmap := draw.Pixmap {
+        pixels=window_surface.pixels,
+        w=window_surface.w,
+        h=window_surface.h,
+        pitch=window_surface.pitch/4,
+    }
+    draw._fill_rect(
+        &pixmap,
+        util.rect_to_centered({mouse_position.x, mouse_position.y, 50, 50}), 
+        draw.color_coral
+    )
     sdl.UpdateWindowSurface(sdl_window)
+    @(static)t: time.Tick
+    util.wait_frame_interval(&t, 100 * time.Millisecond)
     return true
 }
 
 test_handle_event :: proc(event: util.Window_Event) {
-    if event.type == .Key && event.key.keycode == util.KEY_ESCAPE && !event.key.pressed {
+    if event.type == .Key && 
+        event.key.keycode == util.KEY_ESCAPE &&
+        !event.key.pressed 
+    {
         running = false
     }
 }
@@ -204,7 +227,11 @@ handle_events :: proc() {
             }
         }
         if event, ok := window_event.?; ok {
-            src.handle_event( event)
+            when !USE_TEST {
+                src.handle_event( event)
+            } else {
+                test_handle_event( event)
+            }
         }
     }
 // }}}

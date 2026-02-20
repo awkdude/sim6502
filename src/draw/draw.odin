@@ -63,11 +63,11 @@ Renderer_ :: struct {
 }
 
 
-create_font :: proc(font_path: string, font_size_px: i32) -> Font {
+create_font :: proc(font_path: string, font_size_px: i32, allocator := context.allocator) -> Font {
     font: Font
-    success: bool
-    font.font_data, success = os.read_entire_file_from_filename(font_path)
-    assert(success, "Font load error")
+    err: os.Error
+    font.font_data, err = os.read_entire_file_from_path(font_path, allocator)
+    assert(err == nil, "Font load error")
     assert(stbtt.InitFont(&font.font_info, raw_data(font.font_data[:]), 0) == true)
     font.atlas_pixmap = util.make_pixmap(512, 512, 1)
     pack_context: stbtt.pack_context
@@ -214,12 +214,54 @@ end :: proc(draw_context: ^Draw_Context) {
         case Fill_Rect:
             renderer_push_quad(&draw_context.renderer, cmd.rect, cmd.color)
         case Stroke_Rect:
-            renderer_push_outline_rect(
-                &draw_context.renderer,
-                cmd.rect,
-                cmd.color,
-                cast(f32)cmd.line_width
+            // Top {{{
+            renderer_push_quad(
+                renderer,
+                Rectf {
+                    rect.x-line_width,
+                    rect.y-line_width,
+                    rect.w+line_width,
+                    line_width,
+                },
+                color,
             )
+            // }}}
+            // Bottom {{{
+            renderer_push_quad(
+                renderer,
+                Rectf {
+                    rect.x-line_width,
+                    rect.y+rect.h,
+                    rect.w+line_width*2,
+                    line_width,
+                },
+                color,
+            )
+            // }}}
+            // Left {{{
+            renderer_push_quad(
+                renderer,
+                Rectf {
+                    rect.x-line_width,
+                    rect.y,
+                    line_width,
+                    rect.h,
+                },
+                color,
+            )
+            // }}}
+            // Right {{{
+            renderer_push_quad(
+                renderer,
+                Rectf {
+                    rect.x+rect.w,
+                    rect.y-line_width,
+                    line_width,
+                    rect.h+line_width,
+                },
+                color,
+            )
+            // }}}
         case Draw_Text:
             draw_text(
                 &draw_context.renderer,

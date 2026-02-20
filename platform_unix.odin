@@ -13,9 +13,10 @@ import "core:os"
 import "core:log"
 import "core:dynlib"
 import "core:path/filepath"
-import "draw"
+import "src/draw"
+import "src"
 import "platform"
-import "util"
+import "odinlib:util"
 import gl "vendor:OpenGL"
 
 when util.PLATFORM_BACKEND == "native" {

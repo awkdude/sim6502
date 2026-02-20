@@ -1,5 +1,4 @@
-#+build !windows
-#+build !linux
+#+ignore
 package draw
 
 import "core:mem"
@@ -10,15 +9,11 @@ import "core:os"
 import "core:log"
 import stbtt "vendor:stb/truetype"
 import stbi "vendor:stb/image"
-import "../util"
+import "odinlib:util"
 
-vec2   :: util.vec2
-Rect   :: util.Rect
-BBox :: util.BBox
-Color_f  :: util.Color_f
-Color_4b :: util.Color_4b
 
 stroke_line :: proc(pixmap: ^Pixmap, pt0, pt1: vec2, pixel_width: i32, color: Color_f) {
+// {{{
     x0 := math.clamp(pt0.x, 0, pixmap.w - 1)
     y0 := math.clamp(pt0.y, 0, pixmap.h - 1)
     x1 := math.clamp(pt1.x, 0, pixmap.w - 1)
@@ -67,6 +62,7 @@ stroke_line :: proc(pixmap: ^Pixmap, pt0, pt1: vec2, pixel_width: i32, color: Co
             row0 += sy
         }
     }
+// }}}
 }
 
 _fill :: proc(pixmap: ^Pixmap, color: Color_f) {
@@ -88,6 +84,7 @@ _blit :: proc(
     dst_rect: ^Rect = nil, 
     src_rect: ^Rect = nil) 
 {
+// {{{
     src_pixels := cast([^]Color_4b)src_pixmap.pixels
     dst_pixels := cast([^]Color_4b)dst_pixmap.pixels
     dst_min_x: i32 = off.x
@@ -126,9 +123,10 @@ _blit :: proc(
         dst_x := dst_min_x 
         for src_x in src_min_x..<src_max_x {
             src_c := src_pixels[row_s + src_x]
-            if src_c.a == 255 {
+            src_alpha := (src_c >> src_pixmap.pixel_format.a) & 0xff
+            if src_alpha == 255 {
                 dst_pixels[row_d + dst_x] = src_c
-            } else if src_c.a > 0 {
+            } else if src_alpha > 0 {
                 dst_c := dst_pixels[row_d + dst_x]
                 blended_c := alpha_blend(color_4b_to_f(src_c), color_4b_to_f(dst_c))
                 dst_pixels[row_d + dst_x] = color_f_to_4b(blended_c)
@@ -138,6 +136,7 @@ _blit :: proc(
         row_d += dst_pixmap.w
         row_s += src_pixmap.w
     }
+// }}}
 }
 
 _blit_pixmap_mono_to_truecolor :: proc(
@@ -147,6 +146,7 @@ _blit_pixmap_mono_to_truecolor :: proc(
     color: Color_f, 
     src_rect: Maybe(Rect)=nil)
 {
+// {{{
     src_pixels := cast([^]u8)src_pixmap.pixels
     dst_pixels := cast([^]Color_4b)dst_pixmap.pixels
     dst_min_x: i32 = off.x
@@ -210,9 +210,11 @@ _blit_pixmap_mono_to_truecolor :: proc(
         row_d += dst_pixmap.w
         row_s += src_pixmap.w
     }
+// }}}
 }
 
 fill_circle :: proc(pixmap: ^Pixmap, pos: vec2, r: i32, color: Color_f) {
+// {{{
     if color.a <= 0 do return
     x0, x1, y0, y1 := pos.x - r, pos.x + r, pos.y - r, pos.y + r 
     if pixmap.w == 0 || pixmap.h == 0 do return
@@ -256,6 +258,7 @@ fill_circle :: proc(pixmap: ^Pixmap, pos: vec2, r: i32, color: Color_f) {
             row += pixmap.w
         }
     }
+// }}}
 }
 
 _fill_rect_centered :: proc(pixmap: ^Pixmap, r: Rect, color: Color_f) {
@@ -263,6 +266,7 @@ _fill_rect_centered :: proc(pixmap: ^Pixmap, r: Rect, color: Color_f) {
 }
 
 _fill_rect :: proc(pixmap: ^Pixmap, r: Rect, color: Color_f) {
+// {{{
     if color.a <= 0 do return
     b := util.rect_to_bbox(r)
     x0, x1, y0, y1 := b.x0, b.x1, b.y0, b.y1 
@@ -298,4 +302,5 @@ _fill_rect :: proc(pixmap: ^Pixmap, r: Rect, color: Color_f) {
             row += pixmap.w
         }
     }
+// }}}
 }
