@@ -13,19 +13,22 @@ import "src/draw"
 import "core:slice"
 import "base:runtime"
 import "core:time"
+import "core:fmt"
 
-USE_TEST :: false
+USE_TEST :: true
 
-when util.PLATFORM_BACKEND == "sdl" {
+when src.PLATFORM_BACKEND == "sdl" {
 
 USE_GAMEPAD :: false
 
 sdl_window: ^sdl.Window
 sdl_gamepad: ^sdl.Gamepad
 vec2 :: util.vec2
+global_context: runtime.Context
 
 running := true
 keycode_map: map[int]u32 
+U: src.App_Update
 
 sdl_set_proc_address :: proc(p: rawptr, name: cstring) {
     p := cast(^rawptr)p
@@ -36,6 +39,7 @@ main :: proc() {
 // {{{ 
     context.logger = log.create_console_logger()
     context.logger.options -= {.Date}
+    global_context = context
     window_flags := sdl.InitFlags {.VIDEO, .EVENTS }
     when USE_GAMEPAD {
         window_flags += {.GAMEPAD}
@@ -77,6 +81,28 @@ main :: proc() {
     for pair in sdl_key_to_keycode_mappings {
         keycode_map[pair.k] = pair.v
     }
+    // Allows app to be redrawn while resizing
+    _ = sdl.AddEventWatch(
+        proc "c" (userdata: rawptr, event: ^sdl.Event) -> bool {
+            if event.type == .WINDOW_RESIZED || event.type == .WINDOW_EXPOSED {
+                when !USE_TEST {
+                    src.handle_event(Window_Event{
+                        type=.Window_Resize,
+                        vec2={
+                            cast(i32)sdl_event.window.data1,
+                            cast(i32)sdl_event.window.data2,
+                        },
+                    })
+                } else {
+                    context = global_context
+                    log.debug("Resized in event watch")
+                    test_update({})
+                }
+            }
+            return true
+        },
+        nil
+    )
     for running {
         handle_events()
         w, h: i32
@@ -101,7 +127,7 @@ main :: proc() {
 
 mouse_position: vec2
 
-test_update :: proc(_: src.App_Update) -> bool {
+test_update :: proc "contextless"(_: src.App_Update) -> bool {
     window_surface := sdl.GetWindowSurface(sdl_window)
     area := (window_surface.pitch / 4) * window_surface.h
     pixels := cast([^]util.Color4b)window_surface.pixels
@@ -115,13 +141,13 @@ test_update :: proc(_: src.App_Update) -> bool {
         pitch=window_surface.pitch/4,
     }
     draw._fill_rect(
-        &pixmap,
+        pixmap,
         util.rect_to_centered({mouse_position.x, mouse_position.y, 50, 50}), 
         draw.color_coral
     )
     sdl.UpdateWindowSurface(sdl_window)
     @(static)t: time.Tick
-    util.wait_frame_interval(&t, 100 * time.Millisecond)
+    util.wait_frame_interval(&t, 16 * time.Millisecond)
     return true
 }
 
@@ -176,7 +202,7 @@ handle_events :: proc() {
                 }
             }
         case .WINDOW_EXPOSED, .WINDOW_PIXEL_SIZE_CHANGED:
-            // test_update({})
+            when USE_TEST do test_update({})
         case .WINDOW_RESIZED:
             window_event = util.Window_Event {
                 type=.Window_Resize,
@@ -185,6 +211,7 @@ handle_events :: proc() {
                     cast(i32)sdl_event.window.data2,
                 },
             }
+            when USE_TEST do test_update({})
         case .MOUSE_WHEEL: {
             window_event = util.Window_Event {
                 type=.Mouse_Wheel,
@@ -251,7 +278,12 @@ handle_platform_command_sdl :: proc(command: util.Platform_Command) {
         min_size := command.size.? or_else {0, 0}
         sdl.SetWindowMinimumSize(sdl_window, min_size.x, min_size.y)
     case .Rename_Window:
-        sdl.SetWindowTitle(sdl_window, strings.unsafe_string_to_cstring(command.title))
+        
+        title := command.title
+        when ODIN_DEBUG {
+            title = fmt.tprintf("%s [SDL]", command.title)
+        }
+        sdl.SetWindowTitle(sdl_window, strings.unsafe_string_to_cstring(title))
     }
 // }}}
 }

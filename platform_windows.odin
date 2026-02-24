@@ -13,8 +13,9 @@ import sa "core:container/small_array"
 import "src"
 import "core:slice"
 import "src/draw"
+import "core:fmt"
 
-when util.PLATFORM_BACKEND == "native" {
+when src.PLATFORM_BACKEND == "native" {
 MENU_ID_QUIT     :: 100
 MENU_ID_DIRECT2D :: 101
 MENU_ID_SW       :: 102
@@ -159,6 +160,13 @@ main :: proc() {
     win.gl_set_proc_address(&SwapIntervalEXT, "wglSwapIntervalEXT")
     assert(SwapIntervalEXT != nil, "no wglSwapIntervalEXT")
     SwapIntervalEXT(0)
+    ogl_renderer: draw.Renderer_OGL
+    assert(draw.ogl_renderer_init(&ogl_renderer))
+    sw_renderer: draw.Renderer_SW
+    assert(draw.sw_renderer_init(&sw_renderer, framebuffer_pixmap))
+    sw_renderer.resize = proc(_: ^draw.Renderer, _, _: i32) {
+        update_framebuffer_win32() 
+    }
     loop: for {
         message: win.MSG
         sa.clear(&window_events)
@@ -170,7 +178,7 @@ main :: proc() {
                 break loop
             }
         }
-        if !src.update({}) {
+        if !src.update({renderers=[]^draw.Renderer{&ogl_renderer, &sw_renderer}}) {
             break 
         }
 
@@ -206,7 +214,7 @@ test_update :: proc(_: src.App_Update) -> bool {
     x := cast(f32)mouse_position.x / cast(f32)framebuffer_pixmap.w
     y := cast(f32)mouse_position.y / cast(f32)framebuffer_pixmap.h
     slice.fill((cast([^]util.Color4b)pixels)[:area], util.color4f_to_4b({x, 0, y, 0}))
-    draw._fill_rect(&framebuffer_pixmap, {mouse_position.x, mouse_position.y, 100, 100}, draw.color_magenta)
+    draw._fill_rect(framebuffer_pixmap, {mouse_position.x, mouse_position.y, 100, 100}, draw.color_magenta)
     device_context := win.GetDC(window_handle)
     win.BitBlt(device_context, 0, 0, framebuffer_pixmap.w, framebuffer_pixmap.h,
     memory_device_context, 0, 0, win.SRCCOPY)
@@ -415,7 +423,11 @@ handle_platform_command :: proc(command: util.Platform_Command) {
     case .Quit:
         win.DestroyWindow(window_handle)
     case .Rename_Window:
-        title_ws := win.utf8_to_wstring(command.title, context.temp_allocator)
+        title := command.title
+        when ODIN_DEBUG {
+            title = fmt.tprintf("%s [WIN32]", command.title)
+        } 
+        title_ws := win.utf8_to_wstring(title, context.temp_allocator)
         win.SetWindowTextW(window_handle, title_ws)
     case .Change_Mouse_Cursor:
         switch command.cursor_type {

@@ -22,33 +22,41 @@ Fill_Rect :: struct {
 Fill_Rounded_Rect :: struct {
     rect: Rectf,
     color: Color_f,
-    corner_radius: i32,
+    corner_radius: f32,
 }
 
 Stroke_Rect :: struct {
     rect: Rectf,
     color: Color_f,
-    line_width: i32,
+    line_width: f32,
     style: Stroke_Style,
 }
 
 Fill_Circle :: struct {
     origin: vec2f,
-    radius: i32,
+    radius: f32,
     color: Color_f,
 }
 
-Stroke_Line :: struct {
+Stroke_Line :: struct { // TODO: [2]Vertex
     pts: [2]vec2f,
-    line_width: i32,
+    start, end: vec2f,
+    line_width: f32,
     color: Color_f,
     style: Stroke_Style,
 }
 
 Fill_Tri :: struct {
-    v0, v1, v2: vec2f,
-    color: Color_f,
+    v0, v1, v2: [3]vec2f,
+    color: Color4f,
 }
+
+Fill_Quad :: [4]Vertex
+
+// struct {
+//     v0, v1, v2: vec2f,
+//     color: Color_f,
+// }
 
 Draw_Texture :: struct {
     texture: Texture,
@@ -76,6 +84,7 @@ Command :: union {
     Fill_Tri,
     Draw_Texture,
     Draw_Text,
+    Fill_Quad,
     Clip_Rect,
 }
 
@@ -109,7 +118,7 @@ stroke_rect_nc :: proc(
     draw_context: ^Draw_Context,
     rc: BBoxf,
     color: Color_f, 
-    line_width: i32,
+    line_width: f32,
     bbox: Rectf) 
 {
     push_command(draw_context, Stroke_Rect {
@@ -152,7 +161,7 @@ fill_circle_nc :: proc(
 {
     push_command(draw_context, Fill_Circle {
         origin = map_point(origin, bbox),
-        radius = i32(radius * cast(f32)math.min(bbox.w, bbox.h)) / 2,
+        radius = (radius * cast(f32)math.min(bbox.w, bbox.h)) / 2,
         color=color,
     })
 }

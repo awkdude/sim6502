@@ -10,6 +10,7 @@ import "core:math"
 import "core:mem"
 import "core:slice"
 import "core:math/ease"
+import sa "core:container/small_array"
 
 vec2 :: util.vec2
 vec2f :: util.vec2f
@@ -110,6 +111,7 @@ Context :: struct {
     hover_tick: time.Tick,
     ease_type: int,
     dots_per_inch: i32,
+    clip_rect_stack: sa.Small_Array(8, Rect),
     window_size: vec2,
 }
 
@@ -302,7 +304,6 @@ handle_event :: proc(ctx: ^Context, window_event: util.Window_Event) {
 render :: proc(ctx: ^Context) {
 // {{{
     update_layout(ctx)
-    // draw.push_command(ctx.draw_context, draw.Clear{color=draw.color_red})
     _render :: proc(ctx: ^Context, control: ^Control) {
         thick_max: f64 = 20.0
         theta := time.duration_seconds(time.tick_since({}))
@@ -310,17 +311,20 @@ render :: proc(ctx: ^Context) {
         if control == ctx.hovered_control {
             draw.push_command(ctx.draw_context, draw.Stroke_Rect{
                 color=draw.color_cyan,
-                line_width=cast(i32)v,
+                line_width=cast(f32)v,
                 rect=rect_to_f(control.rect),
             })
         }
         render_proc := render_proc_table[control.type]
         if render_proc != nil do render_proc(ctx, control)
-        draw.push_clip_rect(ctx.draw_context, control.rect)
+        assert(sa.push_back(&ctx.clip_rect_stack, control.rect), "Clip rect stack full!")
+        draw.push_command(ctx.draw_context, draw.Clip_Rect{rect=control.rect})
         for child in control.children {
             _render(ctx, child)
         }
-        draw.pop_clip_rect(ctx.draw_context)
+        clip_rect, pop_ok := sa.pop_back_safe(&ctx.clip_rect_stack)
+        assert(pop_ok, "Clip rect stack empty!")
+        draw.push_command(ctx.draw_context, draw.Clip_Rect{rect=clip_rect})
 
     }
     _render(ctx, ctx.root_control)

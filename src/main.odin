@@ -14,6 +14,8 @@ import "base:intrinsics"
 
 WINDOW_TITLE := "SIM6502"
 WINDOW_SIZE := util.vec2{600, 600}
+PLATFORM_BACKEND :: #config(BACKEND, "native")
+
 
 app_context: ^App_Context
 vec2 :: util.vec2
@@ -26,6 +28,7 @@ App_Init :: struct {
 }
 
 App_Update :: struct {
+    renderers: []^draw.Renderer,
     graphics_backend: ^util.Renderer_Backend,
 }
 
@@ -34,6 +37,8 @@ App_Context :: struct {
     dots_per_inch: i32,
     gui_context: gui.Context,
     gui_stack: sa.Small_Array(3, gui.Context),
+    ogl_renderer: draw.Renderer_OGL,
+    sw_renderer: draw.Renderer_SW,
     draw_context: draw.Draw_Context,
     handle_platform_command: proc(_: util.Platform_Command),
     // renderers: [util.Graphics_Backend]Renderer,
@@ -45,7 +50,9 @@ init :: proc(I: App_Init) {
     app_context = new(App_Context)
     using app_context
     // TODO: validate draw_context
-    draw.init(&draw_context)
+    draw.ogl_renderer_init(&app_context.ogl_renderer)
+    draw.init(&app_context.draw_context)
+    app_context.draw_context.renderer = &app_context.ogl_renderer
     font = draw.create_font("resources/consola.ttf", 30)
     handle_platform_command = I.handle_platform_command 
     handle_platform_command({

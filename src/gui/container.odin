@@ -64,7 +64,7 @@ container_render :: proc(ctx: ^Context, control: ^Control) {
     }
 
 
-    draw.push_clip_rect(ctx.draw_context, control.rect)
+    // draw.push_clip_rect(ctx.draw_context, control.rect)
     // Draw children union rect
     draw.push_command(ctx.draw_context, draw.Stroke_Rect {
         rect=rect_to_f(control.children_union_rect),
@@ -72,7 +72,7 @@ container_render :: proc(ctx: ^Context, control: ^Control) {
         line_width=2,
         style=.Dash,
     })
-    draw.pop_clip_rect(ctx.draw_context)
+    // draw.pop_clip_rect(ctx.draw_context)
 }
 
 container_handle_event :: proc(

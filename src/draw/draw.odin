@@ -11,6 +11,7 @@ import "core:log"
 import stbtt "vendor:stb/truetype"
 import stbi "vendor:stb/image"
 import "odinlib:util"
+import "core:math/linalg"
 import sa "core:container/small_array"
 
 vec2   :: util.vec2
@@ -20,14 +21,9 @@ Color_f  :: util.Color_f
 Color_4b :: util.Color4b
 Color4b :: Color_4b
 
-
 Vertex :: struct { 
-    pos: vec2,
-    color: Color_f,
-}
-
-Vertex_uv :: struct { 
-    pos: vec2,
+    position: vec2f,
+    color: Color4f,
     uv: vec2f,
 }
 
@@ -46,12 +42,12 @@ Font_Resource_Type :: enum {
     File,
 }
 
-Renderer_ :: struct {
-    data: rawptr,
-    begin_frame: proc(this: ^Renderer_, u_proj: mat4),
-    end_frame: proc(this: ^Renderer_),
-    clear_color: proc(this: ^Renderer, color: Color4f),
-    set_clip_rect: proc(this: ^Renderer, rect: Rect),
+Renderer :: struct {
+    begin_frame: proc(this: ^Renderer, u_proj: mat4),
+    end_frame: proc(this: ^Renderer),
+    set_clear_color: proc(this: ^Renderer, color: Color4f),
+    set_viewport: proc(this: ^Renderer, size: vec2),
+    set_clip_rect: proc(this: ^Renderer, rect: Rect, loc: runtime.Source_Code_Location),
     push_quad_textured: proc(
         this: ^Renderer,
         rect: Rectf,
@@ -59,7 +55,10 @@ Renderer_ :: struct {
         tex_id: u32,
         st: [2]vec2f = {{0.0, 0.0}, {1.0, 1.0}},
     ),
-    push_quad_color: proc(renderer: ^Renderer, rect: Rectf, color: Color4f),
+    push_quad_color: proc(this: ^Renderer, rect: Rectf, color: Color4f),
+    // push_tri: proc(this: ^Renderer, vertices: [3]Vertex),
+    push_tri: proc(this: ^Renderer, vertices: [3]vec2f, color: Color4f),
+    resize: proc(this: ^Renderer, w, h: i32),
 }
 
 
@@ -145,8 +144,7 @@ draw_text :: proc(
             &quad,
             true
         )
-        renderer_push_quad(
-            renderer,
+        renderer->push_quad_textured(
             {
                 quad.x0,
                 quad.y0,
@@ -173,106 +171,125 @@ Command_ :: struct {
 Draw_Context :: struct {
     command_buffer: sa.Small_Array(1024, Command_),
     clip_rect_stack: sa.Small_Array(16, Rect),
-    renderer: Renderer,
+    renderer: ^Renderer,
     render_size: vec2,
+    began: bool,
 }
 
 init :: proc(draw_context: ^Draw_Context) {
     draw_context^ = {}
-    assert(renderer_init(&draw_context.renderer))
 }
 
-push_clip_rect :: proc(draw_context: ^Draw_Context, rect: Rect, loc := #caller_location) {
-    assert(sa.push_back(&draw_context.clip_rect_stack, rect), "Clip rect stack full", loc)
-    push_command(draw_context, Clip_Rect{rect=rect}, loc)
-}
-
-pop_clip_rect :: proc(draw_context: ^Draw_Context, loc := #caller_location) {
-    clip_rect, pop_ok := sa.pop_back_safe(&draw_context.clip_rect_stack)
-    assert(pop_ok, "Clip rect stack empty", loc)
-    push_command(draw_context, Clip_Rect{rect=clip_rect}, loc)
-}
+// push_clip_rect :: proc(draw_context: ^Draw_Context, rect: Rect, loc := #caller_location) {
+//     assert(draw_context.began, "Drawing hasn't begun!")
+//     assert(sa.push_back(&draw_context.clip_rect_stack, rect), "Clip rect stack full", loc)
+//     push_command(draw_context, Clip_Rect{rect=rect}, loc)
+// }
+//
+// pop_clip_rect :: proc(draw_context: ^Draw_Context, loc := #caller_location) {
+//     assert(draw_context.began, "Drawing hasn't begun!")
+//     clip_rect, pop_ok := sa.pop_back_safe(&draw_context.clip_rect_stack)
+//     assert(pop_ok, "Clip rect stack empty", loc)
+//     push_command(draw_context, Clip_Rect{rect=clip_rect}, loc)
+// }
 
 begin :: proc(draw_context: ^Draw_Context, render_size: vec2) {
+    assert(!draw_context.began, "Drawing already begun!")
+    draw_context.began = true
 	sa.clear(&draw_context.command_buffer)
     draw_context.render_size = render_size
     assert(sa.len(draw_context.clip_rect_stack) == 0, "Clip rect should be empty")
-    renderer_set_viewport(&draw_context.renderer, render_size)
+    draw_context.renderer->set_viewport(render_size)
 }
 
 end :: proc(draw_context: ^Draw_Context) {
-    renderer_begin_frame(
-        &draw_context.renderer,
+// {{{
+    assert(draw_context.began, "Drawing hasn't begun!")
+    draw_context.renderer->begin_frame(
         util.projection_mat_from_window_size(draw_context.render_size)
     )
     log.debugf("Window size: %v", draw_context.render_size)
-    defer renderer_end_frame(&draw_context.renderer)
+    defer draw_context.renderer->end_frame()
     for command in sa.slice(&draw_context.command_buffer) {
         #partial switch cmd in command.command {
         case Clear:
-            renderer_clear_color(&draw_context.renderer, cmd.color)
+            draw_context.renderer->set_clear_color(cmd.color)
         case Fill_Rect:
-            renderer_push_quad(&draw_context.renderer, cmd.rect, cmd.color)
+            draw_context.renderer->push_quad_color(cmd.rect, cmd.color)
         case Stroke_Rect:
             // Top {{{
-            renderer_push_quad(
-                renderer,
+            draw_context.renderer->push_quad_color(
                 Rectf {
-                    rect.x-line_width,
-                    rect.y-line_width,
-                    rect.w+line_width,
-                    line_width,
+                    cmd.rect.x-cmd.line_width,
+                    cmd.rect.y-cmd.line_width,
+                    cmd.rect.w+cmd.line_width,
+                    cmd.line_width,
                 },
-                color,
+                cmd.color,
             )
             // }}}
             // Bottom {{{
-            renderer_push_quad(
-                renderer,
+            draw_context.renderer->push_quad_color(
                 Rectf {
-                    rect.x-line_width,
-                    rect.y+rect.h,
-                    rect.w+line_width*2,
-                    line_width,
+                    cmd.rect.x-cmd.line_width,
+                    cmd.rect.y+cmd.rect.h,
+                    cmd.rect.w+cmd.line_width*2,
+                    cmd.line_width,
                 },
-                color,
+                cmd.color,
             )
             // }}}
             // Left {{{
-            renderer_push_quad(
-                renderer,
+            draw_context.renderer->push_quad_color(
                 Rectf {
-                    rect.x-line_width,
-                    rect.y,
-                    line_width,
-                    rect.h,
+                    cmd.rect.x-cmd.line_width,
+                    cmd.rect.y,
+                    cmd.line_width,
+                    cmd.rect.h,
                 },
-                color,
+                cmd.color,
             )
             // }}}
             // Right {{{
-            renderer_push_quad(
-                renderer,
+            draw_context.renderer->push_quad_color(
                 Rectf {
-                    rect.x+rect.w,
-                    rect.y-line_width,
-                    line_width,
-                    rect.h+line_width,
+                    cmd.rect.x+cmd.rect.w,
+                    cmd.rect.y-cmd.line_width,
+                    cmd.line_width,
+                    cmd.rect.h+cmd.line_width,
                 },
-                color,
+                cmd.color,
             )
             // }}}
+        case Stroke_Line:
+            direction := linalg.normalize0(cmd.end - cmd.start)
+            offset := vec2f{-direction.y, direction.x} * (cmd.line_width / 2)
+            draw_context.renderer->push_tri(
+                {
+                    cmd.start + offset,
+                    cmd.start - offset,
+                    cmd.end - offset,
+                },
+                cmd.color
+            )
+            draw_context.renderer->push_tri(
+                {
+                    cmd.end - offset,
+                    cmd.end + offset,
+                    cmd.start + offset,
+                },
+                cmd.color
+            )
         case Draw_Text:
             draw_text(
-                &draw_context.renderer,
+                draw_context.renderer,
                 cmd.font,
                 vec2f{cmd.rect.x, cmd.rect.y}, //  TODO: cmd.pos,
                 cmd.text,
                 cmd.color
             )
         case Clip_Rect:
-            renderer_set_clip_rect(
-                &draw_context.renderer,
+            draw_context.renderer->set_clip_rect(
                 Rect {
                     cmd.rect.x,
                     draw_context.render_size.y - (cmd.rect.y - cmd.rect.h),
@@ -283,6 +300,8 @@ end :: proc(draw_context: ^Draw_Context) {
             )
         }
     }
+    draw_context.began = false
+// }}}
 }
 
 // measure_string :: proc(draw_context: ^Draw_Context, font: ^Font, text: string) -> vec2 {
@@ -308,14 +327,14 @@ Pixmap :: util.Pixmap
 
 import "core:slice"
 
-_fill :: proc(pixmap: ^Pixmap, color: Color_f) {
+_fill :: proc "contextless" (pixmap: Pixmap, color: Color_f) {
     area := pixmap.w * pixmap.h
     pixels := cast([^]Color_f)pixmap.pixels
 
     slice.fill((cast([^]Color_4b)pixmap.pixels)[:area], color_f_to_4b(color))
 }
 
-_fill_rect :: proc(pixmap: ^Pixmap, r: Rect, color: Color_f) {
+_fill_rect :: proc "contextless" (pixmap: Pixmap, r: Rect, color: Color_f) {
     if color.a <= 0 do return
     b := util.rect_to_bbox(r)
     x0, x1, y0, y1 := b.x0, b.x1, b.y0, b.y1 
