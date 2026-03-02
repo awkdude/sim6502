@@ -15,7 +15,7 @@ import "base:runtime"
 import "core:time"
 import "core:fmt"
 
-USE_TEST :: true
+USE_TEST :: false
 
 when src.PLATFORM_BACKEND == "sdl" {
 
@@ -83,10 +83,12 @@ main :: proc() {
     }
     // Allows app to be redrawn while resizing
     _ = sdl.AddEventWatch(
-        proc "c" (userdata: rawptr, event: ^sdl.Event) -> bool {
-            if event.type == .WINDOW_RESIZED || event.type == .WINDOW_EXPOSED {
+        proc "c" (userdata: rawptr, sdl_event: ^sdl.Event) -> bool {
+        // {{{
+            context = global_context
+            if sdl_event.type == .WINDOW_RESIZED {
                 when !USE_TEST {
-                    src.handle_event(Window_Event{
+                    src.handle_event(util.Window_Event{
                         type=.Window_Resize,
                         vec2={
                             cast(i32)sdl_event.window.data1,
@@ -94,12 +96,12 @@ main :: proc() {
                         },
                     })
                 } else {
-                    context = global_context
                     log.debug("Resized in event watch")
                     test_update({})
                 }
             }
             return true
+        // }}}
         },
         nil
     )
@@ -266,6 +268,7 @@ handle_events :: proc() {
 
 handle_platform_command_sdl :: proc(command: util.Platform_Command) {
 // {{{
+    @(static) system_cursor: ^sdl.Cursor
     #partial switch command.type {
     case .Change_Window_Icon:
         path_cstr := strings.unsafe_string_to_cstring(command.path)
@@ -277,8 +280,21 @@ handle_platform_command_sdl :: proc(command: util.Platform_Command) {
     case .Set_Window_Min_Size:
         min_size := command.size.? or_else {0, 0}
         sdl.SetWindowMinimumSize(sdl_window, min_size.x, min_size.y)
+    case .Change_Mouse_Cursor:
+        if system_cursor != nil {
+            sdl.DestroyCursor(system_cursor)
+        }
+        log.debug("Changed cursor to %v", command.cursor_type)
+        cursor_mappings := [util.Mouse_Cursor_Type]sdl.SystemCursor {
+            .Normal = .DEFAULT,
+            .Wait = .WAIT,
+            .IBeam = .TEXT,
+            .Hand = .POINTER,
+        }
+        system_cursor = sdl.CreateSystemCursor(cursor_mappings[command.cursor_type])
+        assert(system_cursor != nil)
+        assert(sdl.SetCursor(system_cursor))
     case .Rename_Window:
-        
         title := command.title
         when ODIN_DEBUG {
             title = fmt.tprintf("%s [SDL]", command.title)

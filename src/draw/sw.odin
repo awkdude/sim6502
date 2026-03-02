@@ -10,6 +10,8 @@ Renderer_SW :: struct {
 
 sw_renderer_init :: proc(renderer: ^Renderer_SW, target: util.Pixmap) -> bool {
     renderer^ = {
+        target_pixmap = target,
+        name="Software",
         begin_frame=sw_begin_frame,
         end_frame=sw_end_frame,
         set_clear_color=sw_clear_color,
@@ -34,6 +36,7 @@ sw_clear_color :: proc(renderer: ^Renderer, color: Color4f) {
 }
 
 sw_end_frame :: proc(renderer: ^Renderer) {
+    
 }
 
 sw_flush :: #force_inline proc(renderer: ^Renderer) {
@@ -44,10 +47,12 @@ sw_flush :: #force_inline proc(renderer: ^Renderer) {
 
 
 sw_set_clip_rect :: proc(renderer: ^Renderer, clip_rect: Rect, loc := #caller_location) {
-    assert(clip_rect.x >= 0, loc=loc)
-    assert(clip_rect.y >= 0, loc=loc)
-    assert(clip_rect.w >= 0, loc=loc)
-    assert(clip_rect.h >= 0, loc=loc)
+    when CHECK_CLIP {
+        assert(clip_rect.x >= 0, loc=loc)
+        assert(clip_rect.y >= 0, loc=loc)
+        assert(clip_rect.w >= 0, loc=loc)
+        assert(clip_rect.h >= 0, loc=loc)
+    }
     // gl.Scissor(clip_rect.x, clip_rect.y, clip_rect.w, clip_rect.h)
 }
 

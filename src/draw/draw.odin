@@ -43,6 +43,7 @@ Font_Resource_Type :: enum {
 }
 
 Renderer :: struct {
+    name: string,
     begin_frame: proc(this: ^Renderer, u_proj: mat4),
     end_frame: proc(this: ^Renderer),
     set_clear_color: proc(this: ^Renderer, color: Color4f),
@@ -59,6 +60,7 @@ Renderer :: struct {
     // push_tri: proc(this: ^Renderer, vertices: [3]Vertex),
     push_tri: proc(this: ^Renderer, vertices: [3]vec2f, color: Color4f),
     resize: proc(this: ^Renderer, w, h: i32),
+    present: proc(this: ^Renderer),
 }
 
 
@@ -193,18 +195,20 @@ init :: proc(draw_context: ^Draw_Context) {
 //     push_command(draw_context, Clip_Rect{rect=clip_rect}, loc)
 // }
 
-begin :: proc(draw_context: ^Draw_Context, render_size: vec2) {
+begin :: proc(draw_context: ^Draw_Context) {
     assert(!draw_context.began, "Drawing already begun!")
     draw_context.began = true
 	sa.clear(&draw_context.command_buffer)
-    draw_context.render_size = render_size
+    // draw_context.render_size = render_size
     assert(sa.len(draw_context.clip_rect_stack) == 0, "Clip rect should be empty")
-    draw_context.renderer->set_viewport(render_size)
+    // draw_context.renderer->set_viewport(render_size)
 }
 
-end :: proc(draw_context: ^Draw_Context) {
+end :: proc(draw_context: ^Draw_Context, renderer: ^Renderer, render_size: vec2) {
 // {{{
     assert(draw_context.began, "Drawing hasn't begun!")
+    draw_context.renderer = renderer
+    draw_context.render_size = render_size
     draw_context.renderer->begin_frame(
         util.projection_mat_from_window_size(draw_context.render_size)
     )

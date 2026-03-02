@@ -16,20 +16,18 @@ WINDOW_TITLE := "SIM6502"
 WINDOW_SIZE := util.vec2{600, 600}
 PLATFORM_BACKEND :: #config(BACKEND, "native")
 
-
-app_context: ^App_Context
+app: ^App_Context
 vec2 :: util.vec2
 
 App_Init :: struct {
     handle_platform_command: proc(_: util.Platform_Command),
     dots_per_inch: i32,
     window_size: vec2,
-    graphics_backend: util.Renderer_Backend,
 }
 
 App_Update :: struct {
     renderers: []^draw.Renderer,
-    graphics_backend: ^util.Renderer_Backend,
+    renderer_index: ^int,
 }
 
 App_Context :: struct {
@@ -37,8 +35,8 @@ App_Context :: struct {
     dots_per_inch: i32,
     gui_context: gui.Context,
     gui_stack: sa.Small_Array(3, gui.Context),
-    ogl_renderer: draw.Renderer_OGL,
-    sw_renderer: draw.Renderer_SW,
+    renderers: []^draw.Renderer,
+    renderer_index: ^int,
     draw_context: draw.Draw_Context,
     handle_platform_command: proc(_: util.Platform_Command),
     // renderers: [util.Graphics_Backend]Renderer,
@@ -46,13 +44,12 @@ App_Context :: struct {
     window_size: vec2,
 }
 
+@(export, link_name="app_init")
 init :: proc(I: App_Init) {
-    app_context = new(App_Context)
-    using app_context
+    app = new(App_Context)
+    using app
     // TODO: validate draw_context
-    draw.ogl_renderer_init(&app_context.ogl_renderer)
-    draw.init(&app_context.draw_context)
-    app_context.draw_context.renderer = &app_context.ogl_renderer
+    draw.init(&app.draw_context)
     font = draw.create_font("resources/consola.ttf", 30)
     handle_platform_command = I.handle_platform_command 
     handle_platform_command({
@@ -107,14 +104,16 @@ shutdown :: proc() {
     log.debug("SHUTDOWN")
 }
 
-update :: proc(_: App_Update) -> bool {
-    using app_context
+@(export, link_name="app_update")
+update :: proc(U: App_Update) -> bool {
+    using app
     defer free_all(context.temp_allocator)
     interval :: 500 * time.Millisecond
-    if !app_context.running {
+    if !app.running {
         shutdown()
         return false
     }
+    app.renderers, app.renderer_index = U.renderers, U.renderer_index
     @(static) last_tick: time.Tick
     @(static) button_count := 4
     if auto_add && time.tick_since(last_tick) >= interval {
@@ -144,11 +143,12 @@ update :: proc(_: App_Update) -> bool {
     return true
 }
 
+@(export, link_name="app_render")
 render :: proc() {
-    using app_context
+    using app
     // TODO: Move to renderer
-    draw.begin(&draw_context, app_context.window_size)
-    defer draw.end(&draw_context)
+    if app.renderer_index == nil do return
+    draw.begin(&draw_context)
     draw.push_command(&draw_context, draw.Clear{color=draw.color_white})
     gui.render(&gui_context)
     text_buf: [32]u8
@@ -166,26 +166,29 @@ render :: proc() {
             color=draw.color_black,
         }
     )
+    draw.end(&draw_context, app.renderers[app.renderer_index^], app.window_size)
 }
 
+@(export, link_name="app_handle_event")
 handle_event :: proc(event: util.Window_Event) {
     #partial switch event.type {
     case .Window_Resize:
         // draw.resize(&ctx.draw_context, event.vec2)
-        app_context.window_size = event.vec2
+        app.renderers[app.renderer_index^]->resize(event.vec2.x, event.vec2.y)
+        app.window_size = event.vec2
     case .Window_Close:
-        app_context.running = false
+        app.running = false
     case .Key:
         if event_was_key_pressed(event, util.KEY_SPACE) {
-            app_context.auto_add = !app_context.auto_add
+            app.auto_add = !app.auto_add
         } else if event_was_key_released(event, util.KEY_ESCAPE) {
-            app_context.running = false
+            app.running = false
             log.debug("Should be done")
         } else {
             log.debug(event.key)
         }
     }
-    gui.handle_event(&app_context.gui_context, event)
+    gui.handle_event(&app.gui_context, event)
 }
 
 event_was_key_pressed :: proc(event: util.Window_Event, keycode: u32) -> bool {

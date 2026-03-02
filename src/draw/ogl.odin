@@ -10,6 +10,7 @@ import "core:math/linalg"
 Color4f :: util.Color4f
 mat4 ::  util.mat4
 vec3f :: util.vec3f
+CHECK_CLIP :: false
 
 OGL_Vertex :: struct {
     position: vec3f, 
@@ -18,7 +19,7 @@ OGL_Vertex :: struct {
     tex_index: f32,
 }
 
-MAX_NUM_VERTICES :: 1000
+MAX_NUM_VERTICES :: 4000
 MAX_NUM_TEXTURE_UNITS :: 32
 
 
@@ -53,6 +54,7 @@ get_white_tex_id :: proc() -> u32 {
 ogl_renderer_init :: proc(renderer: ^Renderer_OGL) -> bool {
 // {{{
     renderer^ = {
+        name="OpenGL",
         renderer={
             begin_frame=ogl_begin_frame,
             end_frame=ogl_end_frame,
@@ -61,7 +63,9 @@ ogl_renderer_init :: proc(renderer: ^Renderer_OGL) -> bool {
             set_clip_rect=ogl_set_clip_rect,
             push_quad_textured=ogl_push_quad_textured,
             push_quad_color=ogl_push_quad_color,
-            resize=proc(_: ^Renderer, _, _: i32) {}
+            resize=proc(_: ^Renderer, w, h: i32) {
+                gl.Viewport(0, 0, w, h)
+            }
         }
     }
     gl.GenVertexArrays(1, &renderer.vao)
@@ -200,10 +204,12 @@ ogl_flush :: #force_inline proc(renderer: ^Renderer) {
 
 
 ogl_set_clip_rect :: proc(renderer: ^Renderer, clip_rect: Rect, loc := #caller_location) {
-    assert(clip_rect.x >= 0, loc=loc)
-    assert(clip_rect.y >= 0, loc=loc)
-    assert(clip_rect.w >= 0, loc=loc)
-    assert(clip_rect.h >= 0, loc=loc)
+    when CHECK_CLIP {
+        assert(clip_rect.x >= 0, loc=loc)
+        assert(clip_rect.y >= 0, loc=loc)
+        assert(clip_rect.w >= 0, loc=loc)
+        assert(clip_rect.h >= 0, loc=loc)
+    }
     // gl.Scissor(clip_rect.x, clip_rect.y, clip_rect.w, clip_rect.h)
 }
 

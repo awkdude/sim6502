@@ -30,7 +30,10 @@ memory_device_context: win.HDC
 min_window_size, max_window_size: Maybe(util.vec2)
 SwapIntervalEXT: win.SwapIntervalEXTType
 framebuffer_pixmap: util.Pixmap
-renderer_backend := util.Renderer_Backend.Opengl
+ogl_renderer: draw.Renderer_OGL
+sw_renderer: draw.Renderer_SW
+renderers := []^draw.Renderer{&ogl_renderer, &sw_renderer}
+renderer_index: int = 1
 
 // FIXME: Mouse position seems to be off after setting dpi awareness
 
@@ -160,12 +163,31 @@ main :: proc() {
     win.gl_set_proc_address(&SwapIntervalEXT, "wglSwapIntervalEXT")
     assert(SwapIntervalEXT != nil, "no wglSwapIntervalEXT")
     SwapIntervalEXT(0)
-    ogl_renderer: draw.Renderer_OGL
     assert(draw.ogl_renderer_init(&ogl_renderer))
-    sw_renderer: draw.Renderer_SW
+    ogl_renderer.present = proc(_: ^draw.Renderer) {
+        device_context := win.GetDC(window_handle)
+        win.SwapBuffers(device_context)
+        win.ReleaseDC(window_handle, device_context)
+    }
     assert(draw.sw_renderer_init(&sw_renderer, framebuffer_pixmap))
     sw_renderer.resize = proc(_: ^draw.Renderer, _, _: i32) {
         update_framebuffer_win32() 
+    }
+    sw_renderer.present = proc(_: ^draw.Renderer) {
+        device_context := win.GetDC(window_handle)
+        win.BitBlt(
+            device_context,
+            0,
+            0,
+            framebuffer_pixmap.w,
+            framebuffer_pixmap.h,
+            memory_device_context, 
+            0,
+            0,
+            win.SRCCOPY
+        )
+        win.SwapBuffers(device_context)
+        win.ReleaseDC(window_handle, device_context)
     }
     loop: for {
         message: win.MSG
@@ -178,27 +200,28 @@ main :: proc() {
                 break loop
             }
         }
-        if !src.update({renderers=[]^draw.Renderer{&ogl_renderer, &sw_renderer}}) {
+        if !src.update({renderers=renderers, renderer_index=&renderer_index}) {
             break 
         }
 
-        device_context := win.GetDC(window_handle)
-        if renderer_backend == .Opengl {
-            win.SwapBuffers(device_context)
-        } else {   
-            win.BitBlt(
-                device_context,
-                0,
-                0,
-                framebuffer_pixmap.w,
-                framebuffer_pixmap.h,
-                memory_device_context, 
-                0,
-                0,
-                win.SRCCOPY
-            )
-        }
-        win.ReleaseDC(window_handle, device_context)
+        renderers[renderer_index]->present()
+        // device_context := win.GetDC(window_handle)
+        // if renderer_index == .Opengl {
+        //     win.SwapBuffers(device_context)
+        // } else {   
+        //     win.BitBlt(
+        //         device_context,
+        //         0,
+        //         0,
+        //         framebuffer_pixmap.w,
+        //         framebuffer_pixmap.h,
+        //         memory_device_context, 
+        //         0,
+        //         0,
+        //         win.SRCCOPY
+        //     )
+        // }
+        // win.ReleaseDC(window_handle, device_context)
         if true {
             util.wait_frame_interval(&previous_frame_tick, 16 * time.Millisecond)
         }
@@ -240,27 +263,8 @@ window_proc :: proc "stdcall" (
         paintstruct: win.PAINTSTRUCT
         device_context := win.BeginPaint(window_handle, &paintstruct)
         if running {
-            if renderer_backend == .Opengl {
-                // win.SwapBuffers(device_context)
-            } else if renderer_backend == .Software {
-                src.render()
-                win.BitBlt(
-                    device_context,
-                    0,
-                    0,
-                    framebuffer_pixmap.w,
-                    framebuffer_pixmap.h,
-                    memory_device_context, 
-                    0,
-                    0,
-                    win.SRCCOPY
-                )
-                // SwapIntervalEXT(0)
-                // d := win.GetDC(window_handle)
-                // win.SwapBuffers(d)
-                // win.ReleaseDC(window_handle, d)
-                // SwapIntervalEXT(1)
-            }
+            src.render()
+            renderers[renderer_index]->present()
         }
         win.EndPaint(window_handle, &paintstruct)
     case win.WM_CHAR:
@@ -384,7 +388,7 @@ window_proc :: proc "stdcall" (
             type=.Window_Resize,
             vec2={width, height},
         }
-        update_framebuffer_win32()
+        // update_framebuffer_win32()
     case win.WM_GETMINMAXINFO:
         min_max_info := transmute(^win.MINMAXINFO)lparam
         if min_size, ok := min_window_size.?; ok {
@@ -507,6 +511,7 @@ update_framebuffer_win32 :: proc() {
         nil,
         0
     )
+    sw_renderer.target_pixmap = framebuffer_pixmap
     assert(bitmap_handle != nil)
     assert(framebuffer_pixmap.pixels != nil)
     win.SelectObject(memory_device_context, cast(win.HGDIOBJ)bitmap_handle)
