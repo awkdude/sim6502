@@ -507,7 +507,7 @@ update_framebuffer_win32 :: proc() {
         nil,
         &bitmap_info, 
         0,
-        cast(^^rawptr)&framebuffer_pixmap.pixels,
+        &framebuffer_pixmap.pixels,
         nil,
         0
     )

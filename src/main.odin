@@ -1,4 +1,3 @@
-#+feature using-stmt
 package src
 
 import "core:fmt"
@@ -42,30 +41,30 @@ App_Context :: struct {
     // renderers: [util.Graphics_Backend]Renderer,
     running, auto_add: bool,
     window_size: vec2,
+    mouse_position: vec2,
 }
 
 @(export, link_name="app_init")
 init :: proc(I: App_Init) {
     app = new(App_Context)
-    using app
     // TODO: validate draw_context
     draw.init(&app.draw_context)
-    font = draw.create_font("resources/consola.ttf", 30)
-    handle_platform_command = I.handle_platform_command 
-    handle_platform_command({
+    app.font = draw.create_font("resources/consola.ttf", 30)
+    app.handle_platform_command = I.handle_platform_command 
+    app.handle_platform_command({
         type=.Rename_Window,
         title=WINDOW_TITLE,
     })
-    handle_platform_command({
+    app.handle_platform_command({
         type=.Resize_Window,
         size=WINDOW_SIZE,
     })
-    dots_per_inch = I.dots_per_inch
-    window_size = I.window_size
-    gui_context.dots_per_inch = dots_per_inch
-    gui_context.draw_context = &draw_context
-    gui_context.handle_platform_command = handle_platform_command 
-    gui.init(&gui_context, I.window_size)
+    app.dots_per_inch = I.dots_per_inch
+    app.window_size = I.window_size
+    app.gui_context.dots_per_inch = app.dots_per_inch
+    app.gui_context.draw_context = &app.draw_context
+    app.gui_context.handle_platform_command = app.handle_platform_command 
+    gui.init(&app.gui_context, I.window_size)
     // gui.create_control(&gui_context, "first", gui.text_box(&gui_context, "Hello"))
     // gui.create_control(&gui_context, "reg_sp", gui.text_box(&gui_context, "SP", 0xffff))
     // button := gui.create_control(&gui_context, "button", gui.button(&gui_context, "Click Me!"))
@@ -88,15 +87,15 @@ init :: proc(I: App_Init) {
         //     gui.list_item(&gui_context, entry.name)
         // )
     }
-    text_box := gui.create_control(&gui_context, "txt", gui.text_box(&font))
-    slider := gui.create_control(&gui_context, "slid", gui.slider(0, 5, 3))
+    text_box := gui.create_control(&app.gui_context, "txt", gui.text_box(&app.font))
+    slider := gui.create_control(&app.gui_context, "slid", gui.slider(0, 5, 3))
     // button1 := gui.create_control(&gui_context, "btn1", gui.button("BUTTON 1"))
     // button2 := gui.create_control(&gui_context, "btn2", gui.button("BUTTON 2"))
     // button3 := gui.create_control(&gui_context, "btn3", gui.button("BUTTON 3"))
-    min_size := util.dip_to_px(96*3, dots_per_inch)
-    gui_context = gui_context
-    running = true
-    handle_platform_command({type=.Set_Window_Min_Size, size=util.vec2{min_size, min_size}})
+    min_size := util.dip_to_px(96*3, app.dots_per_inch)
+    app.gui_context = app.gui_context
+    app.running = true
+    app.handle_platform_command({type=.Set_Window_Min_Size, size=util.vec2{min_size, min_size}})
 }
 
 @(private)
@@ -106,7 +105,6 @@ shutdown :: proc() {
 
 @(export, link_name="app_update")
 update :: proc(U: App_Update) -> bool {
-    using app
     defer free_all(context.temp_allocator)
     interval :: 500 * time.Millisecond
     if !app.running {
@@ -116,20 +114,20 @@ update :: proc(U: App_Update) -> bool {
     app.renderers, app.renderer_index = U.renderers, U.renderer_index
     @(static) last_tick: time.Tick
     @(static) button_count := 4
-    if auto_add && time.tick_since(last_tick) >= interval {
+    if app.auto_add && time.tick_since(last_tick) >= interval {
         button_name_buf: [8]u8
         button_name := fmt.bprintf(button_name_buf[:], "btn%v", button_count)
         button_label_buf: [16]u8
         button_label := fmt.bprintf(button_label_buf[:], "NEW BTN %v", button_count)
-        gui.create_control(&gui_context, button_name, gui.button(button_label, &font))
+        gui.create_control(&app.gui_context, button_name, gui.button(button_label, &app.font))
         button_count += 1
-        handle_platform_command(util.Platform_Command {
+        app.handle_platform_command(util.Platform_Command {
             title=button_label,
             type=.Rename_Window,
         })
         last_tick = time.tick_now()
     }
-    for event in gui.next_event(&gui_context) {
+    for event in gui.next_event(&app.gui_context) {
         switch {
         case event.control.type == .Button:
             log.debug("Button pressed")
@@ -145,28 +143,30 @@ update :: proc(U: App_Update) -> bool {
 
 @(export, link_name="app_render")
 render :: proc() {
-    using app
     // TODO: Move to renderer
     if app.renderer_index == nil do return
-    draw.begin(&draw_context)
-    draw.push_command(&draw_context, draw.Clear{color=draw.color_white})
-    gui.render(&gui_context)
+    draw.begin(&app.draw_context)
+    color: util.Color4f
+    color.r = (cast(f32)app.mouse_position.x / cast(f32)app.window_size.x)
+    color.g = (cast(f32)app.mouse_position.y / cast(f32)app.window_size.y)
+    draw.push_command(&app.draw_context, draw.Clear{color=color})
+    gui.render(&app.gui_context)
     text_buf: [32]u8
-    text := fmt.bprintf(text_buf[:], "Auto add: %v", "ON" if auto_add else "OFF")
+    text := fmt.bprintf(text_buf[:], "Auto add: %v", "ON" if app.auto_add else "OFF")
     draw.push_command(
-        &draw_context, 
+        &app.draw_context, 
         draw.Draw_Text {
             rect=gui.rect_to_f(util.size_to_rect(
                 vec2 {
-                    draw.get_text_width(&font, text),
-                    draw.get_text_height(&font),
+                    draw.get_text_width(&app.font, text),
+                    draw.get_text_height(&app.font),
                 })),
-            font=&font,
+            font=&app.font,
             text=text,
             color=draw.color_black,
         }
     )
-    draw.end(&draw_context, app.renderers[app.renderer_index^], app.window_size)
+    draw.end(&app.draw_context, app.renderers[app.renderer_index^], app.window_size)
 }
 
 @(export, link_name="app_handle_event")
@@ -178,6 +178,8 @@ handle_event :: proc(event: util.Window_Event) {
         app.window_size = event.vec2
     case .Window_Close:
         app.running = false
+    case .Mouse_Move:
+        app.mouse_position = event.vec2
     case .Key:
         if event_was_key_pressed(event, util.KEY_SPACE) {
             app.auto_add = !app.auto_add

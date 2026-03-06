@@ -212,7 +212,7 @@ end :: proc(draw_context: ^Draw_Context, renderer: ^Renderer, render_size: vec2)
     draw_context.renderer->begin_frame(
         util.projection_mat_from_window_size(draw_context.render_size)
     )
-    log.debugf("Window size: %v", draw_context.render_size)
+    // log.debugf("Window size: %v", draw_context.render_size)
     defer draw_context.renderer->end_frame()
     for command in sa.slice(&draw_context.command_buffer) {
         #partial switch cmd in command.command {
