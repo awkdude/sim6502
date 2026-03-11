@@ -1,14 +1,15 @@
 package draw
 
 import "odinlib:util"
+import "core:log"
 
-Renderer_SW :: struct {
+SW_Renderer :: struct {
     using _: Renderer,
     clear_color: util.Color4f,
     target_pixmap: util.Pixmap,
 }
 
-sw_renderer_init :: proc(renderer: ^Renderer_SW, target: util.Pixmap) -> bool {
+sw_renderer_init :: proc(renderer: ^SW_Renderer, target: util.Pixmap) -> bool {
     renderer^ = {
         target_pixmap = target,
         name="Software",
@@ -19,20 +20,21 @@ sw_renderer_init :: proc(renderer: ^Renderer_SW, target: util.Pixmap) -> bool {
         set_clip_rect=sw_set_clip_rect,
         push_quad_textured=sw_push_quad_textured,
         push_quad_color=sw_push_quad_color,
+        resize=proc(_: ^Renderer, _: vec2) {},
     }
     return true
 }
 
 sw_begin_frame :: proc(renderer: ^Renderer, u_proj: mat4) {
-    sw_renderer := cast(^Renderer_SW)renderer
+    sw_renderer := cast(^SW_Renderer)renderer
     _fill(sw_renderer.target_pixmap, sw_renderer.clear_color)
 }
 
-sw_set_viewport :: proc(renderer: ^Renderer, render_size: vec2) {
+sw_set_viewport :: proc(renderer: ^Renderer, rect: Rect) {
 }
 
 sw_clear_color :: proc(renderer: ^Renderer, color: Color4f) {
-    (cast(^Renderer_SW)renderer).clear_color = color
+    (cast(^SW_Renderer)renderer).clear_color = color
 }
 
 sw_end_frame :: proc(renderer: ^Renderer) {
@@ -40,9 +42,7 @@ sw_end_frame :: proc(renderer: ^Renderer) {
 }
 
 sw_flush :: #force_inline proc(renderer: ^Renderer) {
-    renderer := cast(^Renderer_OGL)renderer
-    sw_end_frame(renderer)
-    sw_begin_frame(renderer, renderer.projection_mat)
+    renderer := cast(^SW_Renderer)renderer
 }
 
 
@@ -56,11 +56,15 @@ sw_set_clip_rect :: proc(renderer: ^Renderer, clip_rect: Rect, loc := #caller_lo
     // gl.Scissor(clip_rect.x, clip_rect.y, clip_rect.w, clip_rect.h)
 }
 
+sw_push_tri :: proc(renderer: ^Renderer, vertices: [3]Vertex) {
+
+}
+
 sw_push_quad_textured :: proc(
     renderer: ^Renderer,
     rect: Rectf,
     color: Color4f,
-    tex_id: u32,
+    tex_id: Texture,
     st: [2]vec2f = {{0.0, 0.0}, {1.0, 1.0}},
 )
 { 

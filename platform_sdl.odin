@@ -14,8 +14,11 @@ import "core:slice"
 import "base:runtime"
 import "core:time"
 import "core:fmt"
+import "core:mem"
 
 USE_TEST :: false
+USE_SDL_RENDERER :: true
+USE_ODIN_ALLOCATOR_FOR_SDL :: false
 
 when src.PLATFORM_BACKEND == "sdl" {
 
@@ -23,23 +26,57 @@ USE_GAMEPAD :: false
 
 sdl_window: ^sdl.Window
 sdl_gamepad: ^sdl.Gamepad
-vec2 :: util.vec2
+vec2f :: util.vec2f
 global_context: runtime.Context
+sw_renderer: draw.SW_Renderer
+ogl_renderer: draw.OGL_Renderer
+vec2 :: util.vec2
+
+SDL_Renderer :: struct {
+    using base: draw.Renderer,
+    sdl_ptr: ^sdl.Renderer,
+}
+sdl_renderer: SDL_Renderer
+renderers := [2]^draw.Renderer{0=&sw_renderer}
+renderer_index: int = 1
 
 running := true
 keycode_map: map[int]u32 
 U: src.App_Update
-
-sdl_set_proc_address :: proc(p: rawptr, name: cstring) {
-    p := cast(^rawptr)p
-    p^ = cast(rawptr)sdl.GL_GetProcAddress(name)
-}
 
 main :: proc() {
 // {{{ 
     context.logger = log.create_console_logger()
     context.logger.options -= {.Date}
     global_context = context
+    when USE_ODIN_ALLOCATOR_FOR_SDL {
+        // {{{
+        logging_allocator: util.Logging_Allocator
+        util.logging_allocator_init(&logging_allocator, global_context.allocator)
+        global_context.allocator = util.logging_allocator(&logging_allocator)
+        sdl.SetMemoryFunctions(
+            malloc_func=proc "c" (size: uint) -> rawptr {
+                context = global_context
+                data, _ := mem.alloc(cast(int)size)
+                return data
+            },
+            calloc_func=proc "c" (nmemb, size: uint) -> rawptr {
+                context = global_context
+                data, _ := mem.alloc(cast(int)(size * nmemb))
+                return data
+            },
+            realloc_func=proc "c" (data: rawptr, size: uint) -> rawptr {
+                context = global_context
+                data, _ := mem.resize(data, 0, cast(int)size)
+                return data
+            },
+            free_func=proc "c" (data: rawptr) {
+                context = global_context
+                mem.free(data)
+            }
+        )
+        // }}}
+    }
     window_flags := sdl.InitFlags {.VIDEO, .EVENTS }
     when USE_GAMEPAD {
         window_flags += {.GAMEPAD}
@@ -47,34 +84,37 @@ main :: proc() {
     if !sdl.Init(window_flags) {
         log.panic("Could not init SDL")
     }
-    sdl_window = sdl.CreateWindow(
-        strings.clone_to_cstring("SDL WINDOW"),
-        400,
-        400,
-        {.OPENGL, .RESIZABLE},
-    ) 
+    when USE_SDL_RENDERER {
+        _ = sdl.CreateWindowAndRenderer(
+            strings.clone_to_cstring("SDL WINDOW"),
+            400,
+            400,
+            {.RESIZABLE},
+            &sdl_window,
+            &sdl_renderer.sdl_ptr
+        )
+        renderers[1] = &sdl_renderer
+    } else {
+        sdl_window = sdl.CreateWindow(
+            strings.clone_to_cstring("SDL WINDOW"),
+            400,
+            400,
+            {.OPENGL, .RESIZABLE},
+        ) 
+        renderers[1] = &ogl_renderer
+        // opengl {{{ 
+        // sdl.GL_SetAttribute(sdl.GL_CONTEXT_PROFILE_MASK, cast(i32)sdl.GL_CONTEXT_PROFILE_CORE)
+        // sdl.GL_SetAttribute(sdl.GL_CONTEXT_MAJOR_VERSION, 3)
+        // sdl.GL_SetAttribute(sdl.GL_CONTEXT_MINOR_VERSION, 3)
+        // gl_context := sdl.GL_CreateContext(sdl_window)
+        // sdl.GL_MakeCurrent(sdl_window, gl_context)
+        // gl.load_up_to(4, 5, sdl.gl_set_proc_address)
+        // sdl.GL_SetSwapInterval(1)
+        // }}}
+    }
     if sdl_window == nil {
         log.panic("Could not create SDL window")
     }
-    sdl.GL_SetAttribute(sdl.GL_CONTEXT_PROFILE_MASK, cast(i32)sdl.GL_CONTEXT_PROFILE_CORE)
-    sdl.GL_SetAttribute(sdl.GL_CONTEXT_MAJOR_VERSION, 3)
-    sdl.GL_SetAttribute(sdl.GL_CONTEXT_MINOR_VERSION, 3)
-    gl_context := sdl.GL_CreateContext(sdl_window)
-    sdl.GL_MakeCurrent(sdl_window, gl_context)
-    gl.load_up_to(3, 3, sdl_set_proc_address)
-    src.init({
-        // gl_set_proc_address=sdl_set_proc_address,
-        // set_gamepad_rumble_proc=set_gamepad_rumble_sdl,
-        dots_per_inch=96, // FIXME:
-        handle_platform_command=handle_platform_command_sdl,
-        // get_window_dpi = proc() -> i32 {
-        //     // TODO:
-        //     return 0
-        // },
-        window_size={400, 400},
-    })
-
-    sdl.GL_SetSwapInterval(1)
     _ = sdl.StartTextInput(sdl_window)
 
     keycode_map = make(map[int]u32, 128)
@@ -105,10 +145,229 @@ main :: proc() {
         },
         nil
     )
+    window_surface := sdl.GetWindowSurface(sdl_window)
+    if window_surface != nil {
+        pixmap := draw.Pixmap {
+            pixels=window_surface.pixels,
+            w=window_surface.w,
+            h=window_surface.h,
+            pitch=window_surface.pitch/4,
+        }
+        assert(draw.sw_renderer_init(&sw_renderer, pixmap))
+        sw_renderer.present = proc(_: ^draw.Renderer) {
+            sdl.UpdateWindowSurface(sdl_window)
+        }
+    }
+    when USE_SDL_RENDERER {
+        // sdl renderer {{{
+        sdl_renderer.base = draw.dummy_renderer()
+        sdl_renderer.set_clear_color = proc(r: ^draw.Renderer, color: draw.Color4f) {
+            sdl_renderer := cast(^SDL_Renderer)r
+            sdl.SetRenderDrawColorFloat(
+                sdl_renderer.sdl_ptr,
+                color.r,
+                color.g,
+                color.b,
+                color.a
+            )
+            sdl.RenderClear(sdl_renderer.sdl_ptr)
+        }
+        sdl_renderer.present = proc(r: ^draw.Renderer) {
+            sdl_renderer := cast(^SDL_Renderer)r
+            sdl.RenderPresent(sdl_renderer.sdl_ptr)
+        }
+        sdl_renderer.create_texture_from_path = proc(
+            r: ^draw.Renderer,
+            path: string) -> (draw.Texture, bool)
+        {
+            sdl_renderer := cast(^SDL_Renderer)r
+            surface := sdl_img.Load(strings.clone_to_cstring(path, context.temp_allocator))
+            assert(surface != nil)
+            texture := sdl.CreateTextureFromSurface(sdl_renderer.sdl_ptr, surface)
+            return cast(draw.Texture)texture, texture != nil
+        }
+        sdl_renderer.create_texture_from_pixmap = proc(
+            r: ^draw.Renderer,
+            pixmap: draw.Pixmap) -> (draw.Texture, bool)
+        {
+            sdl_renderer := cast(^SDL_Renderer)r
+            format := sdl.DEFINE_PIXELFORMAT(.PACKED8,.NONE, .NONE, 8, 1)
+            surface := sdl.CreateSurfaceFrom(
+                pixmap.w,
+                pixmap.h,
+                .INDEX8,
+                pixmap.pixels,
+                pixmap.pitch,
+            )
+            assert(surface != nil)
+            texture := sdl.CreateTextureFromSurface(sdl_renderer.sdl_ptr, surface)
+            return cast(draw.Texture)texture, texture != nil
+        }
+        sdl_renderer.push_quad_textured = proc(
+            r: ^draw.Renderer,
+            rect: draw.Rectf,
+            color: draw.Color4f,
+            tex_id: draw.Texture,
+            st: [2]vec2f = {{0.0, 0.0}, {1.0, 1.0}},
+        )
+        {
+            rect := rect
+            sdl_renderer := cast(^SDL_Renderer)r
+            sdl_texture := cast(^sdl.Texture)tex_id
+            x := rect.x
+            y := rect.y
+            w := rect.w
+            h := rect.h
+            vertices := []sdl.Vertex{
+                // {{{
+                sdl.Vertex{
+                    position={x, y + h},
+                    tex_coord={st[0].x, st[1].y},
+                    color=cast(sdl.FColor)color,
+                },
+                sdl.Vertex{
+                    position={x + w, y + h},
+                    tex_coord={st[1].x, st[1].y},
+                    color=cast(sdl.FColor)color,
+                },
+                sdl.Vertex{
+                    position={x + w, y},
+                    tex_coord={st[1].x, st[0].y},
+                    color=cast(sdl.FColor)color,
+                },
+                sdl.Vertex{
+                    position={x, y + h},
+                    tex_coord={st[0].x, st[1].y},
+                    color=cast(sdl.FColor)color,
+                },
+                sdl.Vertex{
+                    position={x + w, y},
+                    tex_coord={st[1].x, st[0].y},
+                    color=cast(sdl.FColor)color,
+                },
+                sdl.Vertex{
+                    position={x, y},
+                    tex_coord={st[0].x, st[0].y},
+                    color=cast(sdl.FColor)color,
+                },
+                // }}}
+            }
+            sdl.RenderGeometry(
+                sdl_renderer.sdl_ptr,
+                sdl_texture,
+                raw_data(vertices),
+                cast(i32)len(vertices),
+                nil,
+                0
+            )
+        }
+        sdl_renderer.push_quad_color = proc(
+            r: ^draw.Renderer,
+            rect: draw.Rectf,
+            color: draw.Color4f)
+        {
+            rect := rect
+            sdl_renderer := cast(^SDL_Renderer)r
+            sdl.SetRenderDrawColorFloat(
+                sdl_renderer.sdl_ptr,
+                color.r,
+                color.g,
+                color.b,
+                color.a
+            )
+            sdl.RenderFillRect(
+                sdl_renderer.sdl_ptr,
+                cast(^sdl.FRect)&rect
+            )
+        }
+        sdl_renderer.push_tri = proc(
+            r: ^draw.Renderer,
+            verts: [3]vec2f,
+            color: draw.Color4f)
+        {
+            sdl_renderer := cast(^SDL_Renderer)r
+            vertices := []sdl.Vertex {
+                sdl.Vertex{
+                    position={verts[0].x, verts[0].y},
+                    tex_coord={0.0, 0.0},
+                    color=cast(sdl.FColor)color,
+                },
+                sdl.Vertex{
+                    position={verts[1].x, verts[1].y},
+                    tex_coord={0.0, 0.0},
+                    color=cast(sdl.FColor)color,
+                },
+                sdl.Vertex{
+                    position={verts[2].x, verts[2].y},
+                    tex_coord={0.0, 0.0},
+                    color=cast(sdl.FColor)color,
+                },
+            }
+            sdl.RenderGeometry(
+                sdl_renderer.sdl_ptr,
+                nil,
+                raw_data(vertices),
+                cast(i32)len(vertices),
+                nil,
+                0
+            )
+        }
+        sdl_renderer.set_viewport = proc(
+            r: ^draw.Renderer,
+            rect: draw.Rect)
+        {
+            rect := rect
+            sdl_renderer := cast(^SDL_Renderer)r
+            sdl.SetRenderViewport(
+                sdl_renderer.sdl_ptr,
+                cast(^sdl.Rect)&rect,
+            )
+        }
+        sdl_renderer.set_clip_rect  = proc(
+            r: ^draw.Renderer,
+            rect: draw.Rect,
+            loc := #caller_location)
+        {
+            rect := rect
+            sdl_renderer := cast(^SDL_Renderer)r
+            // sdl.SetRenderClipRect(
+            //     sdl_renderer.sdl_ptr,
+            //     cast(^sdl.Rect)&rect,
+            // )
+        }
+        // }}}
+    } else {
+        assert(draw.ogl_renderer_init(&ogl_renderer))
+        ogl_renderer.present = proc(_: ^draw.Renderer) {
+            sdl.GL_SwapWindow(sdl_window)
+        }
+    }
+    src.init(src.App_Init{
+        // gl_set_proc_address=sdl_set_proc_address,
+        // set_gamepad_rumble_proc=set_gamepad_rumble_sdl,
+        dots_per_inch=96, // FIXME:
+        handle_platform_command=handle_platform_command_sdl,
+        // get_window_dpi = proc() -> i32 {
+        //     // TODO:
+        //     return 0
+        // },
+        window_size={400, 400},
+        renderer=renderers[renderer_index],
+    })
+
     for running {
         handle_events()
         w, h: i32
         sdl.GetWindowSize(sdl_window, &w, &h)
+        window_surface := sdl.GetWindowSurface(sdl_window)
+        if window_surface != nil {
+            sw_renderer.target_pixmap = draw.Pixmap {
+                pixels=window_surface.pixels,
+                w=window_surface.w,
+                h=window_surface.h,
+                pitch=window_surface.pitch/4,
+            }
+        }
         gamepad_state, gamepad_ok := get_gamepad_state_sdl()
         // U := util.Game_Update{
         //     window_size={w, h},
@@ -118,8 +377,12 @@ main :: proc() {
 
 
         when !USE_TEST {
-            if !src.update({}) do return
-            sdl.GL_SwapWindow(sdl_window)
+            U := src.App_Update{
+                renderers=renderers[:],
+                renderer_index=&renderer_index,
+            }
+            running = src.update(U) 
+            renderers[renderer_index]->present()
         } else {
             if !test_update({}) do return
         }
@@ -135,17 +398,19 @@ test_update :: proc "contextless"(_: src.App_Update) -> bool {
     pixels := cast([^]util.Color4b)window_surface.pixels
     x := cast(f32)mouse_position.x / cast(f32)window_surface.w
     y := cast(f32)mouse_position.y / cast(f32)window_surface.h
-    slice.fill((cast([^]util.Color4b)pixels)[:area], util.color4f_to_4b({x, 0, y, 0}))
+    background_color := util.Color4f{x, 0, y, 0}
+    slice.fill((cast([^]util.Color4b)pixels)[:area], util.color4f_to_4b(background_color))
     pixmap := draw.Pixmap {
         pixels=window_surface.pixels,
         w=window_surface.w,
         h=window_surface.h,
         pitch=window_surface.pitch/4,
     }
+    cursor_color := 1.0 - background_color 
     draw._fill_rect(
         pixmap,
         util.rect_to_centered({mouse_position.x, mouse_position.y, 50, 50}), 
-        draw.color_coral
+        cursor_color
     )
     sdl.UpdateWindowSurface(sdl_window)
     @(static)t: time.Tick
@@ -214,6 +479,10 @@ handle_events :: proc() {
                 },
             }
             when USE_TEST do test_update({})
+        case .WINDOW_DISPLAY_CHANGED:
+            log.debug("WINDOW_DISPLAY_CHANGED")
+        case .WINDOW_DISPLAY_SCALE_CHANGED:
+            log.debug("WINDOW_DISPLAY_SCALE_CHANGED")
         case .MOUSE_WHEEL: {
             window_event = util.Window_Event {
                 type=.Mouse_Wheel,

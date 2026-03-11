@@ -21,6 +21,10 @@ Color_f  :: util.Color_f
 Color_4b :: util.Color4b
 Color4b :: Color_4b
 
+// TODO: Maybe rename Draw_Context to Render_Group, Command_Buffer, etc. 
+
+Texture :: uintptr
+
 Vertex :: struct { 
     position: vec2f,
     color: Color4f,
@@ -32,9 +36,10 @@ Font :: struct {
     packedchar_array: [96]stbtt.packedchar,
     font_info: stbtt.fontinfo,
     atlas_pixmap: util.Pixmap,
-    atlas_tex_id: u32,
+    atlas_tex_id: Texture,
     font_path: string,
     font_size_px: i32,
+    ok: bool
 }
 
 Font_Resource_Type :: enum {
@@ -47,24 +52,58 @@ Renderer :: struct {
     begin_frame: proc(this: ^Renderer, u_proj: mat4),
     end_frame: proc(this: ^Renderer),
     set_clear_color: proc(this: ^Renderer, color: Color4f),
-    set_viewport: proc(this: ^Renderer, size: vec2),
+    set_viewport: proc(this: ^Renderer, rect: Rect),
     set_clip_rect: proc(this: ^Renderer, rect: Rect, loc: runtime.Source_Code_Location),
+    create_texture_from_pixmap: proc(this: ^Renderer, pixmap: Pixmap) -> (Texture, bool),
+    // TODO: Delete
+    create_texture_from_path: proc(this: ^Renderer, path: string) -> (Texture, bool),
     push_quad_textured: proc(
         this: ^Renderer,
         rect: Rectf,
         color: Color4f,
-        tex_id: u32,
+        tex_id: Texture,
         st: [2]vec2f = {{0.0, 0.0}, {1.0, 1.0}},
     ),
     push_quad_color: proc(this: ^Renderer, rect: Rectf, color: Color4f),
     // push_tri: proc(this: ^Renderer, vertices: [3]Vertex),
     push_tri: proc(this: ^Renderer, vertices: [3]vec2f, color: Color4f),
-    resize: proc(this: ^Renderer, w, h: i32),
+    resize: proc(this: ^Renderer, size: vec2),
     present: proc(this: ^Renderer),
 }
 
+dummy_renderer :: proc() -> Renderer {
+    return {
+        name="?",
+        begin_frame=proc(this: ^Renderer, u_proj: mat4) {},
+        end_frame=proc(this: ^Renderer) {},
+        set_clear_color=proc(this: ^Renderer, color: Color4f) {},
+        set_viewport=proc(this: ^Renderer, rect: Rect) {},
+        set_clip_rect=proc(this: ^Renderer, rect: Rect, loc: runtime.Source_Code_Location) {},
+        create_texture_from_pixmap=proc(this: ^Renderer, pixmap: Pixmap) -> (Texture, bool){
+            return 0, false
+        },
+        push_quad_textured=proc(
+            this: ^Renderer,
+            rect: Rectf,
+            color: Color4f,
+            tex_id: Texture,
+            st: [2]vec2f = {{0.0, 0.0}, {1.0, 1.0}},
+        ) {},
+        push_quad_color=proc(this: ^Renderer, rect: Rectf, color: Color4f) {},
+        // push_tri=proc(this: ^Renderer, vertices: [3]Vertex) {},
+        push_tri=proc(this: ^Renderer, vertices: [3]vec2f, color: Color4f) {},
+        resize=proc(this: ^Renderer, size: vec2) {},
+        present=proc(this: ^Renderer) {},
+    }
+}
 
-create_font :: proc(font_path: string, font_size_px: i32, allocator := context.allocator) -> Font {
+
+create_font :: proc(
+    font_path: string,
+    font_size_px: i32,
+    renderer: ^Renderer,
+    allocator := context.allocator) -> Font 
+{
     font: Font
     err: os.Error
     font.font_data, err = os.read_entire_file_from_path(font_path, allocator)
@@ -91,8 +130,12 @@ create_font :: proc(font_path: string, font_size_px: i32, allocator := context.a
         96,
         raw_data(font.packedchar_array[:])
     )
+    font.font_size_px = font_size_px
     stbtt.PackEnd(&pack_context)
-    font.atlas_tex_id = util.create_texture_from_pixmap(font.atlas_pixmap)
+    ok: bool
+    font.atlas_tex_id, ok = renderer->create_texture_from_pixmap(font.atlas_pixmap)
+    assert(ok)
+    font.ok = true
     return font
 }
 
@@ -122,6 +165,7 @@ draw_text :: proc(
     color: Color4f) 
 {
 // {{{
+    if !font.ok do return
     offset := offset
     pen := offset
     ascent, descent, line_gap: i32
@@ -154,7 +198,7 @@ draw_text :: proc(
                 quad.y1-quad.y0,
             },
             color,
-            font.atlas_tex_id,
+            cast(Texture)font.atlas_tex_id,
             {
                 {quad.s0, quad.t0},
                 {quad.s1, quad.t1},
@@ -195,18 +239,19 @@ init :: proc(draw_context: ^Draw_Context) {
 //     push_command(draw_context, Clip_Rect{rect=clip_rect}, loc)
 // }
 
-begin :: proc(draw_context: ^Draw_Context) {
-    assert(!draw_context.began, "Drawing already begun!")
-    draw_context.began = true
-	sa.clear(&draw_context.command_buffer)
-    // draw_context.render_size = render_size
-    assert(sa.len(draw_context.clip_rect_stack) == 0, "Clip rect should be empty")
-    // draw_context.renderer->set_viewport(render_size)
-}
+// begin :: proc(draw_context: ^Draw_Context) {
+//     assert(!draw_context.began, "Drawing already begun!")
+//     draw_context.began = true
+// 	sa.clear(&draw_context.command_buffer)
+//     // draw_context.render_size = render_size
+//     assert(sa.len(draw_context.clip_rect_stack) == 0, "Clip rect should be empty")
+//     // draw_context.renderer->set_viewport(render_size)
+// }
 
-end :: proc(draw_context: ^Draw_Context, renderer: ^Renderer, render_size: vec2) {
+submit :: proc(draw_context: ^Draw_Context, renderer: ^Renderer, render_size: vec2) {
 // {{{
-    assert(draw_context.began, "Drawing hasn't begun!")
+    // assert(draw_context.began, "Drawing hasn't begun!")
+    assert(sa.len(draw_context.clip_rect_stack) == 0, "Clip rect should be empty")
     draw_context.renderer = renderer
     draw_context.render_size = render_size
     draw_context.renderer->begin_frame(
@@ -284,6 +329,17 @@ end :: proc(draw_context: ^Draw_Context, renderer: ^Renderer, render_size: vec2)
                 },
                 cmd.color
             )
+        case Draw_Texture:
+            draw_context.renderer->push_quad_textured(
+                rect={
+                    x=cmd.off.x,
+                    y=cmd.off.y,
+                    w=100, // FIXME:
+                    h=100, // FIXME:
+                },
+                color=color_white,
+                tex_id=cmd.texture,
+            )
         case Draw_Text:
             draw_text(
                 draw_context.renderer,
@@ -305,6 +361,7 @@ end :: proc(draw_context: ^Draw_Context, renderer: ^Renderer, render_size: vec2)
         }
     }
     draw_context.began = false
+	sa.clear(&draw_context.command_buffer)
 // }}}
 }
 
@@ -313,7 +370,7 @@ end :: proc(draw_context: ^Draw_Context, renderer: ^Renderer, render_size: vec2)
 // }
 
 push_command :: proc(draw_context: ^Draw_Context, command: Command, loc := #caller_location) {
-    assert(sa.append(&draw_context.command_buffer, Command_{command=command, location=loc}), "Too many draw commands!", loc)
+    assert(sa.append(&draw_context.command_buffer, Command_{command=command, location=loc}), "Too many draw commands!\a", loc)
 }
 
 color_4b_to_f :: util.color4b_to_4f

@@ -19,7 +19,7 @@ import "platform"
 import "odinlib:util"
 import gl "vendor:OpenGL"
 
-when util.PLATFORM_BACKEND == "native" {
+when src.PLATFORM_BACKEND == "native" {
 vec2 :: util.vec2
 
 WINDOW_WIDTH : i32 : 600

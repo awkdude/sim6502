@@ -10,8 +10,6 @@ Rectf :: util.Rectf
 // vec2f :: util.vec2
 // Color_f :: util.Color_f
 
-Texture :: uintptr
-
 Clear :: struct { color: Color_f }
 
 Fill_Rect :: struct {

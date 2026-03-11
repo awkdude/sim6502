@@ -1,4 +1,5 @@
 Makefile
+sim6502
 *.vs
 *.cap
 *.awk

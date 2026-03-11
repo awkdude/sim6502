@@ -17,10 +17,12 @@ PLATFORM_BACKEND :: #config(BACKEND, "native")
 
 app: ^App_Context
 vec2 :: util.vec2
+vec2f :: util.vec2f
 
 App_Init :: struct {
     handle_platform_command: proc(_: util.Platform_Command),
     dots_per_inch: i32,
+    renderer: ^draw.Renderer,
     window_size: vec2,
 }
 
@@ -42,6 +44,8 @@ App_Context :: struct {
     running, auto_add: bool,
     window_size: vec2,
     mouse_position: vec2,
+    test_tex: draw.Texture,
+    pts: [dynamic]vec2f,
 }
 
 @(export, link_name="app_init")
@@ -49,8 +53,12 @@ init :: proc(I: App_Init) {
     app = new(App_Context)
     // TODO: validate draw_context
     draw.init(&app.draw_context)
-    app.font = draw.create_font("resources/consola.ttf", 30)
+    app.font = draw.create_font("resources/consola.ttf", 30, I.renderer)
     app.handle_platform_command = I.handle_platform_command 
+    app.handle_platform_command({
+        type=.Change_Window_Icon,
+        path="resources/sim6502.ico",
+    })
     app.handle_platform_command({
         type=.Rename_Window,
         title=WINDOW_TITLE,
@@ -59,6 +67,9 @@ init :: proc(I: App_Init) {
         type=.Resize_Window,
         size=WINDOW_SIZE,
     })
+    ok: bool
+    app.test_tex, ok = I.renderer->create_texture_from_path("resources/smile.png")
+    log.assert(ok)
     app.dots_per_inch = I.dots_per_inch
     app.window_size = I.window_size
     app.gui_context.dots_per_inch = app.dots_per_inch
@@ -69,12 +80,10 @@ init :: proc(I: App_Init) {
     // gui.create_control(&gui_context, "reg_sp", gui.text_box(&gui_context, "SP", 0xffff))
     // button := gui.create_control(&gui_context, "button", gui.button(&gui_context, "Click Me!"))
     dir_path, _ := os.get_working_directory(context.temp_allocator)
-    current_directory_fd, open_err := os.open(dir_path)
-    dir_list, read_err := os.read_dir(current_directory_fd, 64, context.temp_allocator)
+    dir_list, read_err := os.read_directory_by_path(dir_path, -1, context.temp_allocator)
     if read_err != nil {
         log.fatal("Could not list current working directory")
     }
-    os.close(current_directory_fd)
 
     // gui.create_control(&gui_context, "parent", gui.list_item(&gui_context, ".."))
     for entry, i in dir_list {
@@ -145,7 +154,7 @@ update :: proc(U: App_Update) -> bool {
 render :: proc() {
     // TODO: Move to renderer
     if app.renderer_index == nil do return
-    draw.begin(&app.draw_context)
+    // draw.begin(&app.draw_context)
     color: util.Color4f
     color.r = (cast(f32)app.mouse_position.x / cast(f32)app.window_size.x)
     color.g = (cast(f32)app.mouse_position.y / cast(f32)app.window_size.y)
@@ -166,7 +175,25 @@ render :: proc() {
             color=draw.color_black,
         }
     )
-    draw.end(&app.draw_context, app.renderers[app.renderer_index^], app.window_size)
+    for i := 1; i < len(app.pts); i += 1 {
+        draw.push_command(
+            &app.draw_context,
+            draw.Stroke_Line {
+                start=app.pts[i-1],
+                end=app.pts[i],
+                line_width=4,
+                color=draw.color_blue,
+            }
+        )
+    }
+    draw.push_command(
+        &app.draw_context,
+        draw.Draw_Texture{
+            off={0, 0},
+            texture=app.test_tex,
+        }
+    )
+    draw.submit(&app.draw_context, app.renderers[app.renderer_index^], app.window_size)
 }
 
 @(export, link_name="app_handle_event")
@@ -174,12 +201,13 @@ handle_event :: proc(event: util.Window_Event) {
     #partial switch event.type {
     case .Window_Resize:
         // draw.resize(&ctx.draw_context, event.vec2)
-        app.renderers[app.renderer_index^]->resize(event.vec2.x, event.vec2.y)
+        app.renderers[app.renderer_index^]->resize(event.vec2)
         app.window_size = event.vec2
     case .Window_Close:
         app.running = false
     case .Mouse_Move:
         app.mouse_position = event.vec2
+        append(&app.pts, vec2f{cast(f32)event.vec2.x, cast(f32)event.vec2.y})
     case .Key:
         if event_was_key_pressed(event, util.KEY_SPACE) {
             app.auto_add = !app.auto_add

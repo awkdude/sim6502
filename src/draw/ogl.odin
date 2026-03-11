@@ -23,7 +23,7 @@ MAX_NUM_VERTICES :: 4000
 MAX_NUM_TEXTURE_UNITS :: 32
 
 
-Renderer_OGL :: struct {
+OGL_Renderer :: struct {
     using renderer: Renderer,
     vao, vbo: u32,
     source_shader: util.Source_Shader,
@@ -51,23 +51,22 @@ get_white_tex_id :: proc() -> u32 {
 // }}}
 }
 
-ogl_renderer_init :: proc(renderer: ^Renderer_OGL) -> bool {
+ogl_renderer_init :: proc(renderer: ^OGL_Renderer) -> bool {
 // {{{
     renderer^ = {
         name="OpenGL",
-        renderer={
-            begin_frame=ogl_begin_frame,
-            end_frame=ogl_end_frame,
-            set_clear_color=ogl_clear_color,
-            set_viewport=ogl_set_viewport,
-            set_clip_rect=ogl_set_clip_rect,
-            push_quad_textured=ogl_push_quad_textured,
-            push_quad_color=ogl_push_quad_color,
-            resize=proc(_: ^Renderer, w, h: i32) {
-                gl.Viewport(0, 0, w, h)
-            }
+        begin_frame=ogl_begin_frame,
+        end_frame=ogl_end_frame,
+        set_clear_color=ogl_clear_color,
+        set_viewport=ogl_set_viewport,
+        set_clip_rect=ogl_set_clip_rect,
+        push_quad_textured=ogl_push_quad_textured,
+        push_quad_color=ogl_push_quad_color,
+        resize=proc(_: ^Renderer, size: vec2) {
+            gl.Viewport(0, 0, size.x, size.y)
         }
     }
+    renderer.vao = 0
     gl.GenVertexArrays(1, &renderer.vao)
     gl.BindVertexArray(renderer.vao)
     gl.GenBuffers(1, &renderer.vbo)
@@ -137,7 +136,7 @@ ogl_renderer_init :: proc(renderer: ^Renderer_OGL) -> bool {
 
 ogl_begin_frame :: proc(renderer: ^Renderer, u_proj: mat4) {
 // {{{
-    renderer := cast(^Renderer_OGL)renderer
+    renderer := cast(^OGL_Renderer)renderer
     sa.clear(&renderer.vertices)
     sa.clear(&renderer.textures)
     gl.Enable(gl.BLEND)
@@ -156,8 +155,8 @@ ogl_begin_frame :: proc(renderer: ^Renderer, u_proj: mat4) {
 // }}}
 }
 
-ogl_set_viewport :: proc(renderer: ^Renderer, render_size: vec2) {
-    gl.Viewport(0, 0, render_size.x, render_size.y)
+ogl_set_viewport :: proc(renderer: ^Renderer, rect: Rect) {
+    gl.Viewport(rect.x, rect.y, rect.w, rect.h)
 }
 
 ogl_clear_color :: proc(renderer: ^Renderer, color: Color4f) {
@@ -167,7 +166,7 @@ ogl_clear_color :: proc(renderer: ^Renderer, color: Color4f) {
 
 ogl_end_frame :: proc(renderer: ^Renderer) {
 // {{{
-    renderer := cast(^Renderer_OGL)renderer
+    renderer := cast(^OGL_Renderer)renderer
     gl.Disable(gl.DEPTH_TEST)
     defer gl.Enable(gl.DEPTH_TEST)
     gl.Enable(gl.SCISSOR_TEST)
@@ -197,7 +196,7 @@ ogl_end_frame :: proc(renderer: ^Renderer) {
 }
 
 ogl_flush :: #force_inline proc(renderer: ^Renderer) {
-    renderer := cast(^Renderer_OGL)renderer
+    renderer := cast(^OGL_Renderer)renderer
     ogl_end_frame(renderer)
     ogl_begin_frame(renderer, renderer.projection_mat)
 }
@@ -217,15 +216,16 @@ ogl_push_quad_textured :: proc(
     renderer: ^Renderer,
     rect: Rectf,
     color: Color4f,
-    tex_id: u32,
+    tex_id: Texture,
     st: [2]vec2f = {{0.0, 0.0}, {1.0, 1.0}},
 )
 { 
 // {{{
-    renderer := cast(^Renderer_OGL)renderer
+    renderer := cast(^OGL_Renderer)renderer
     if sa.space(renderer.vertices) < 6 {
         ogl_flush(renderer)
     }
+    tex_id := cast(u32)tex_id
     tex_index := texture_index_from_id(renderer, tex_id)
     x := rect.x
     y := rect.y
@@ -276,7 +276,7 @@ ogl_push_quad_textured :: proc(
 }
 
 ogl_push_quad_color :: proc(renderer: ^Renderer, rect: Rectf, color: Color4f) {
-    ogl_push_quad_textured(renderer, rect, color, get_white_tex_id()) 
+    ogl_push_quad_textured(renderer, rect, color, cast(Texture)get_white_tex_id()) 
 }
 
 
@@ -288,7 +288,7 @@ ogl_push_quad :: proc {
 @(private)
 texture_index_from_id :: #force_inline proc(renderer: ^Renderer, tex_id: u32) -> f32 {
 // {{{
-    renderer := cast(^Renderer_OGL)renderer
+    renderer := cast(^OGL_Renderer)renderer
     tex_index: u32 = BAD_TEX_ID
     if idx, found := slice.linear_search(sa.slice(&renderer.textures), tex_id); found {
         tex_index = cast(u32)idx
@@ -310,7 +310,7 @@ ogl_push_tri :: proc(
     color: Color4f) 
 {
 // {{{
-    renderer := cast(^Renderer_OGL)renderer
+    renderer := cast(^OGL_Renderer)renderer
     tex_index := texture_index_from_id(renderer, get_white_tex_id())
     if sa.space(renderer.vertices) < 3 {
         ogl_flush(renderer)
@@ -404,15 +404,3 @@ ogl_push_line_ndc :: proc(
         color,
     )
 }
-
-
-// color_white   :: Color4f{1.000, 1.000, 1.000, 1.0}
-// color_black   :: Color4f{0.000, 0.000, 0.000, 1.0}
-// color_gray    :: Color4f{0.500, 0.500, 0.500, 1.0}
-// color_red     :: Color4f{1.000, 0.000, 0.000, 1.0}
-// color_green   :: Color4f{0.000, 1.000, 0.000, 1.0}
-// color_blue    :: Color4f{0.000, 0.000, 1.000, 1.0}
-// color_magenta :: Color4f{1.000, 0.000, 1.000, 1.0}
-// color_yellow  :: Color4f{1.000, 1.000, 0.000, 1.0}
-// color_cyan    :: Color4f{0.000, 1.000, 1.000, 1.0}
-// color_coral   :: Color4f{1.000, 0.500, 0.310, 1.0}
