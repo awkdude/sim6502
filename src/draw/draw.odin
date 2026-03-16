@@ -266,6 +266,12 @@ submit :: proc(draw_context: ^Draw_Context, renderer: ^Renderer, render_size: ve
         case Fill_Rect:
             draw_context.renderer->push_quad_color(cmd.rect, cmd.color)
         case Stroke_Rect:
+            offset_table := [Stroke_Alignment]f32{
+                .Center=cmd.line_width/2,
+                .Inward=-cmd.line_width,
+                .Outward=cmd.line_width,
+            }
+            v := offset_table[cmd.alignment]
             // Top {{{
             draw_context.renderer->push_quad_color(
                 Rectf {

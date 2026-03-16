@@ -12,6 +12,10 @@ Rectf :: util.Rectf
 
 Clear :: struct { color: Color_f }
 
+Coordinate_System :: struct {
+    basis, origin: vec2f,
+}
+
 Fill_Rect :: struct {
     rect: Rectf,
     color: Color_f,
@@ -23,11 +27,17 @@ Fill_Rounded_Rect :: struct {
     corner_radius: f32,
 }
 
+Stroke_Alignment :: enum {
+    Center,
+    Inward,
+    Outward
+}
+
 Stroke_Rect :: struct {
     rect: Rectf,
     color: Color_f,
     line_width: f32,
-    style: Stroke_Style,
+    alignment: Stroke_Alignment,
 }
 
 Fill_Circle :: struct {

@@ -10,3 +10,4 @@ sim6502
 *.o
 todo.txt
 ols.json
+.gdb_history
