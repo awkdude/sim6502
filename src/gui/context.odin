@@ -111,7 +111,7 @@ Context :: struct {
     hover_tick: time.Tick,
     ease_type: int,
     dots_per_inch: i32,
-    clip_rect_stack: sa.Small_Array(8, Rect),
+    clip_rect_stack: [dynamic; 8]Rect,
     window_size: vec2,
 }
 
@@ -317,12 +317,12 @@ render :: proc(ctx: ^Context) {
         }
         render_proc := render_proc_table[control.type]
         if render_proc != nil do render_proc(ctx, control)
-        assert(sa.push_back(&ctx.clip_rect_stack, control.rect), "Clip rect stack full!")
+        assert(append(&ctx.clip_rect_stack, control.rect) != 0, "Clip rect stack full!")
         draw.push_command(ctx.draw_context, draw.Clip_Rect{rect=control.rect})
         for child in control.children {
             _render(ctx, child)
         }
-        clip_rect, pop_ok := sa.pop_back_safe(&ctx.clip_rect_stack)
+        clip_rect, pop_ok := pop_safe(&ctx.clip_rect_stack)
         assert(pop_ok, "Clip rect stack empty!")
         draw.push_command(ctx.draw_context, draw.Clip_Rect{rect=clip_rect})
 

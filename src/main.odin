@@ -35,7 +35,7 @@ App_Context :: struct {
     font: draw.Font,
     dots_per_inch: i32,
     gui_context: gui.Context,
-    gui_stack: sa.Small_Array(3, gui.Context),
+    gui_stack: [dynamic; 3]gui.Context,
     renderers: []^draw.Renderer,
     renderer_index: ^int,
     draw_context: draw.Draw_Context,

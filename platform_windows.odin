@@ -39,7 +39,7 @@ renderer_index: int = 1
 
 wide_string_literal :: intrinsics.constant_utf16_cstring
 previous_frame_tick: time.Tick
-window_events: sa.Small_Array(64, util.Window_Event)
+window_events: [dynamic; 64]util.Window_Event
 
 
 main :: proc() {

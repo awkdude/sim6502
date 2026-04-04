@@ -1,6 +1,5 @@
 package draw
 
-import sa "core:container/small_array"
 import "core:slice"
 import "core:log"
 import "odinlib:util"
@@ -27,10 +26,10 @@ OGL_Renderer :: struct {
     using renderer: Renderer,
     vao, vbo: u32,
     source_shader: util.Source_Shader,
-    textures: sa.Small_Array(MAX_NUM_TEXTURE_UNITS, u32),
+    textures: [dynamic; MAX_NUM_TEXTURE_UNITS]u32,
     projection_mat: mat4,
     depth: f32,
-    vertices: sa.Small_Array(MAX_NUM_VERTICES, OGL_Vertex),
+    vertices: [dynamic; MAX_NUM_VERTICES]OGL_Vertex,
 }
 
 BAD_TEX_ID: u32 : 4096 
@@ -73,7 +72,7 @@ ogl_renderer_init :: proc(renderer: ^OGL_Renderer) -> bool {
     gl.BindBuffer(gl.ARRAY_BUFFER, renderer.vbo)
     gl.BufferData(
         gl.ARRAY_BUFFER,
-        size_of(OGL_Vertex) * sa.cap(renderer.vertices), 
+        size_of(OGL_Vertex) * cap(renderer.vertices), 
         nil, 
         gl.DYNAMIC_DRAW
     )
@@ -137,8 +136,8 @@ ogl_renderer_init :: proc(renderer: ^OGL_Renderer) -> bool {
 ogl_begin_frame :: proc(renderer: ^Renderer, u_proj: mat4) {
 // {{{
     renderer := cast(^OGL_Renderer)renderer
-    sa.clear(&renderer.vertices)
-    sa.clear(&renderer.textures)
+    clear(&renderer.vertices)
+    clear(&renderer.textures)
     gl.Enable(gl.BLEND)
     gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
     // gl.Disable(gl.DEPTH_TEST)
@@ -172,24 +171,24 @@ ogl_end_frame :: proc(renderer: ^Renderer) {
     gl.Enable(gl.SCISSOR_TEST)
     defer gl.Disable(gl.SCISSOR_TEST)
     gl.UseProgram(renderer.source_shader.program)
-    for tex_id, i in sa.slice(&renderer.textures) {
+    for tex_id, i in renderer.textures[:] {
         gl.ActiveTexture(cast(u32)(gl.TEXTURE0 + i))
         gl.BindTexture(gl.TEXTURE_2D, tex_id)
     }
     gl.BindBuffer(gl.ARRAY_BUFFER, renderer.vbo)
     gl.BufferData(
         gl.ARRAY_BUFFER,
-        size_of(OGL_Vertex) * sa.cap(renderer.vertices), 
+        size_of(OGL_Vertex) * cap(renderer.vertices), 
         nil, 
         gl.DYNAMIC_DRAW
     )
     gl.BufferSubData(
         gl.ARRAY_BUFFER, 
         0,
-        slice.size(sa.slice(&renderer.vertices)), 
-        sa.get_ptr(&renderer.vertices, 0)
+        len(renderer.vertices), 
+        raw_data(renderer.vertices[:])
     )
-    gl.DrawArrays(gl.TRIANGLES, 0, cast(i32)sa.len(renderer.vertices))
+    gl.DrawArrays(gl.TRIANGLES, 0, cast(i32)len(renderer.vertices))
     // gl.Enable(gl.DEPTH_TEST)
     // gl.DepthFunc(gl.LESS)
 // }}}
@@ -222,7 +221,7 @@ ogl_push_quad_textured :: proc(
 { 
 // {{{
     renderer := cast(^OGL_Renderer)renderer
-    if sa.space(renderer.vertices) < 6 {
+    if util.space(renderer.vertices) < 6 {
         ogl_flush(renderer)
     }
     tex_id := cast(u32)tex_id
@@ -231,9 +230,9 @@ ogl_push_quad_textured :: proc(
     y := rect.y
     w := rect.w
     h := rect.h
-    sa.push( 
-    // {{{
+    append( 
        &renderer.vertices,
+    // {{{
         OGL_Vertex{
             position={x, y + h, renderer.depth},
             tex_coords={st[0].x, st[1].y},
@@ -290,14 +289,14 @@ texture_index_from_id :: #force_inline proc(renderer: ^Renderer, tex_id: u32) ->
 // {{{
     renderer := cast(^OGL_Renderer)renderer
     tex_index: u32 = BAD_TEX_ID
-    if idx, found := slice.linear_search(sa.slice(&renderer.textures), tex_id); found {
+    if idx, found := slice.linear_search(renderer.textures[:], tex_id); found {
         tex_index = cast(u32)idx
     } else {
-        if !sa.push(&renderer.textures, tex_id) {
+        if append(&renderer.textures, tex_id) != 0 {
             ogl_flush(renderer)
-            sa.push(&renderer.textures, tex_id)
+            append(&renderer.textures, tex_id)
         }
-        tex_index = cast(u32)(sa.len(renderer.textures) - 1)
+        tex_index = cast(u32)(len(renderer.textures) - 1)
     }
     assert(tex_index != BAD_TEX_ID)
     return cast(f32)tex_index
@@ -312,10 +311,10 @@ ogl_push_tri :: proc(
 // {{{
     renderer := cast(^OGL_Renderer)renderer
     tex_index := texture_index_from_id(renderer, get_white_tex_id())
-    if sa.space(renderer.vertices) < 3 {
+    if util.space(renderer.vertices) < 3 {
         ogl_flush(renderer)
     }
-    sa.push( 
+    append( 
         &renderer.vertices,
         OGL_Vertex{
             position={verts[0].x, verts[0].y, 0.0},

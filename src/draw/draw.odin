@@ -215,8 +215,8 @@ Command_ :: struct {
 }
 
 Draw_Context :: struct {
-    command_buffer: sa.Small_Array(1024, Command_),
-    clip_rect_stack: sa.Small_Array(16, Rect),
+    command_buffer: [dynamic; 1024]Command_,
+    clip_rect_stack: [dynamic; 16]Rect,
     renderer: ^Renderer,
     render_size: vec2,
     began: bool,
@@ -251,7 +251,7 @@ init :: proc(draw_context: ^Draw_Context) {
 submit :: proc(draw_context: ^Draw_Context, renderer: ^Renderer, render_size: vec2) {
 // {{{
     // assert(draw_context.began, "Drawing hasn't begun!")
-    assert(sa.len(draw_context.clip_rect_stack) == 0, "Clip rect should be empty")
+    assert(len(draw_context.clip_rect_stack) == 0, "Clip rect should be empty")
     draw_context.renderer = renderer
     draw_context.render_size = render_size
     draw_context.renderer->begin_frame(
@@ -259,7 +259,7 @@ submit :: proc(draw_context: ^Draw_Context, renderer: ^Renderer, render_size: ve
     )
     // log.debugf("Window size: %v", draw_context.render_size)
     defer draw_context.renderer->end_frame()
-    for command in sa.slice(&draw_context.command_buffer) {
+    for command in draw_context.command_buffer[:] {
         #partial switch cmd in command.command {
         case Clear:
             draw_context.renderer->set_clear_color(cmd.color)
@@ -367,7 +367,7 @@ submit :: proc(draw_context: ^Draw_Context, renderer: ^Renderer, render_size: ve
         }
     }
     draw_context.began = false
-	sa.clear(&draw_context.command_buffer)
+	clear(&draw_context.command_buffer)
 // }}}
 }
 
@@ -376,7 +376,7 @@ submit :: proc(draw_context: ^Draw_Context, renderer: ^Renderer, render_size: ve
 // }
 
 push_command :: proc(draw_context: ^Draw_Context, command: Command, loc := #caller_location) {
-    assert(sa.append(&draw_context.command_buffer, Command_{command=command, location=loc}), "Too many draw commands!\a", loc)
+    assert(append(&draw_context.command_buffer, Command_{command=command, location=loc}) != 0, "Too many draw commands!\a", loc)
 }
 
 color_4b_to_f :: util.color4b_to_4f

@@ -70,7 +70,6 @@ container_render :: proc(ctx: ^Context, control: ^Control) {
         rect=rect_to_f(control.children_union_rect),
         color=draw.color_purple,
         line_width=2,
-        style=.Dash,
     })
     // draw.pop_clip_rect(ctx.draw_context)
 }
@@ -84,4 +83,4 @@ container_handle_event :: proc(
     case .Mouse_Wheel:
     case .Key:
     }
-}
+        }

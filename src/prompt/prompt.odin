@@ -11,7 +11,7 @@ import "core:log"
 
 Command_Line :: struct {
     d2d_context: ^util.Direct2D_Context,
-    buffer: sa.Small_Array(64, rune),
+    buffer: [dynamic; 64]rune,
     cursor: int,
 }
 
