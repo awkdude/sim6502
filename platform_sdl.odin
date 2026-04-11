@@ -399,7 +399,10 @@ test_update :: proc "contextless"(_: src.App_Update) -> bool {
     x := cast(f32)mouse_position.x / cast(f32)window_surface.w
     y := cast(f32)mouse_position.y / cast(f32)window_surface.h
     background_color := util.Color4f{x, 0, y, 0}
-    slice.fill((cast([^]util.Color4b)pixels)[:area], util.color4f_to_4b(background_color))
+    slice.fill(
+        (cast([^]util.Color4b)pixels)[:area], 
+        util.color4f_to_4b(background_color)
+    )
     pixmap := draw.Pixmap {
         pixels=window_surface.pixels,
         w=window_surface.w,
